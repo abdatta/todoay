@@ -1,0 +1,39 @@
+export type TodoItem = {
+  id: string;
+  text: string;
+  completed: boolean;
+  pinned: boolean;
+  createdAt: string;
+  sourceDate: string;
+  copiedFromDate?: string;
+};
+
+export type NoteDocument = {
+  id: string;
+  title: string;
+  content: string;
+  pinned: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type UndatedChecklistItem = {
+  id: string;
+  text: string;
+  completed: boolean;
+};
+
+export type UndatedEntry = {
+  id: string;
+  type: "list" | "note";
+  title: string;
+  text: string;
+  items: UndatedChecklistItem[];
+};
+
+export type TodoayState = {
+  todosByDate: Record<string, TodoItem[]>;
+  noteIdsByDate: Record<string, string[]>;
+  noteDocs: Record<string, NoteDocument>;
+  undatedEntries: UndatedEntry[];
+};
