@@ -31,3 +31,5 @@ The workflow builds a static export and deploys the `out` directory to project P
 ## PWA installability
 
 The app includes a web app manifest, install icons, and a service worker so it can be installed from Chrome on Android after deployment.
+
+Each GitHub Pages deploy also stamps the app with the current commit SHA so installed clients can detect a new service worker and reload onto the latest code.

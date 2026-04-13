@@ -1,4 +1,5 @@
-const CACHE_NAME = "todoay-static-v1";
+const version = new URL(self.location.href).searchParams.get("v") || "dev";
+const CACHE_NAME = `todoay-static-${version}`;
 const basePath = self.location.pathname.replace(/\/sw\.js$/, "");
 const appShellRoutes = [
   `${basePath}/`,

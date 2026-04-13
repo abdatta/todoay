@@ -28,7 +28,10 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="en">
       <body>
         <TodoayProvider>
-          <ServiceWorkerRegistration basePath={process.env.PAGES_BASE_PATH || ""} />
+          <ServiceWorkerRegistration
+            basePath={process.env.PAGES_BASE_PATH || ""}
+            version={process.env.NEXT_PUBLIC_APP_VERSION || "dev"}
+          />
           <Navigation />
           <main className="container">{children}</main>
         </TodoayProvider>

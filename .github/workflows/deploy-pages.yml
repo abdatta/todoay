@@ -20,6 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PAGES_BASE_PATH: /${{ github.event.repository.name }}
+      NEXT_PUBLIC_APP_VERSION: ${{ github.sha }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
