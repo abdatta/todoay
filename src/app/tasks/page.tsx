@@ -22,6 +22,20 @@ function TasksScreen() {
   const visibleTodos = useMemo(() => getVisibleTodos(selectedDate, today), [getVisibleTodos, selectedDate, today]);
   const openTodos = visibleTodos.filter((item) => !item.completed);
   const completedTodos = visibleTodos.filter((item) => item.completed);
+  const dateProgress = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(state.todosByDate).flatMap(([date, items]) => {
+          if (items.length === 0) {
+            return [];
+          }
+
+          const completed = items.filter((item) => item.completed).length;
+          return [[date, { completed, total: items.length }] as const];
+        }),
+      ),
+    [state.todosByDate],
+  );
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {
@@ -197,7 +211,7 @@ function TasksScreen() {
         icon={<CheckSquare2 size={30} color="var(--accent-color)" />}
       />
 
-      <DateNavigator date={selectedDate} onChange={setSelectedDate} />
+      <DateNavigator date={selectedDate} onChange={setSelectedDate} dateProgress={dateProgress} />
 
       <section className="card task-list-card">
         <div className="task-list">

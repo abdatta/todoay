@@ -507,11 +507,14 @@ input {
 }
 
 .datepicker-day {
+  position: relative;
+  isolation: isolate;
   aspect-ratio: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
+  border: 1px solid transparent;
   font-size: 0.95rem;
   font-weight: 500;
   color: var(--text-main);
@@ -532,11 +535,53 @@ input {
   font-weight: 700;
 }
 
+.datepicker-day-has-items::before,
+.datepicker-day-has-items::after {
+  position: absolute;
+  pointer-events: none;
+}
+
+.datepicker-day-progress {
+  position: absolute;
+  inset: -1px;
+  width: calc(100% + 2px);
+  height: calc(100% + 2px);
+  overflow: visible;
+}
+
+.datepicker-day-progress-track,
+.datepicker-day-progress-value {
+  fill: none;
+}
+
+.datepicker-day-progress-track {
+  stroke: color-mix(in srgb, var(--accent-color) 22%, transparent);
+  stroke-width: 4;
+  opacity: 0.95;
+}
+
+.datepicker-day-progress-value {
+  stroke: color-mix(in srgb, var(--accent-color) 72%, white);
+  stroke-width: 8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .datepicker-day-selected {
   background: var(--accent-color) !important;
+  border-color: transparent !important;
   color: #fff !important;
   font-weight: 600 !important;
   box-shadow: 0 4px 10px rgba(255, 158, 143, 0.4);
+}
+
+.datepicker-day-selected .datepicker-day-progress-track {
+  stroke: var(--accent-color);
+  opacity: 1;
+}
+
+.datepicker-day-selected .datepicker-day-progress-value {
+  stroke: #fff;
 }
 
 .datepicker-day-unavailable {

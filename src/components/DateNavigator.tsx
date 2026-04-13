@@ -7,9 +7,11 @@ import CustomDatePicker from "@/components/CustomDatePicker";
 export default function DateNavigator({
   date,
   onChange,
+  dateProgress,
 }: {
   date: string;
   onChange: (value: string) => void;
+  dateProgress?: Record<string, { completed: number; total: number }>;
 }) {
   const parsed = parseISO(date);
 
@@ -24,7 +26,7 @@ export default function DateNavigator({
       </button>
 
       <div className="select-wrapper">
-        <CustomDatePicker selectedDate={date} onChange={onChange} />
+        <CustomDatePicker selectedDate={date} onChange={onChange} dateProgress={dateProgress} />
       </div>
 
       <button

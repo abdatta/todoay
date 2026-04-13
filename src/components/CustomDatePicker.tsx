@@ -18,10 +18,33 @@ import {
 } from "date-fns";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
+const DAY_PROGRESS_RADIUS = 46;
+const DAY_PROGRESS_CENTER = 50;
+
+function polarToCartesian(angleDegrees: number) {
+  const angleRadians = (angleDegrees * Math.PI) / 180;
+
+  return {
+    x: DAY_PROGRESS_CENTER + DAY_PROGRESS_RADIUS * Math.cos(angleRadians),
+    y: DAY_PROGRESS_CENTER + DAY_PROGRESS_RADIUS * Math.sin(angleRadians),
+  };
+}
+
+function describeCounterClockwiseArc(completedRatio: number) {
+  const startAngle = -90;
+  const endAngle = startAngle - completedRatio * 360;
+  const start = polarToCartesian(startAngle);
+  const end = polarToCartesian(endAngle);
+  const largeArcFlag = completedRatio > 0.5 ? 1 : 0;
+
+  return `M ${start.x} ${start.y} A ${DAY_PROGRESS_RADIUS} ${DAY_PROGRESS_RADIUS} 0 ${largeArcFlag} 0 ${end.x} ${end.y}`;
+}
+
 interface CustomDatePickerProps {
   selectedDate: string;
   onChange: (date: string) => void;
   displayDates?: string[];
+  dateProgress?: Record<string, { completed: number; total: number }>;
   disabled?: boolean;
 }
 
@@ -29,6 +52,7 @@ export default function CustomDatePicker({
   selectedDate,
   onChange,
   displayDates = [],
+  dateProgress = {},
   disabled,
 }: CustomDatePickerProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -181,14 +205,47 @@ export default function CustomDatePicker({
               const isCurrentMonth = isSameMonth(day, monthStart);
               const isTodayDate = isSameDay(day, new Date());
               const isAvailable = !hasRestrictedDates || displayDates.includes(dayStr);
+              const progress = dateProgress[dayStr];
+              const hasItems = Boolean(progress && progress.total > 0);
+              const completedRatio = hasItems ? progress.completed / progress.total : 0;
+              const progressArc = completedRatio > 0 && completedRatio < 1
+                ? describeCounterClockwiseArc(completedRatio)
+                : "";
 
               return (
                 <button
                   key={day.toISOString()}
                   type="button"
                   onClick={() => handleSelectDay(day)}
-                  className={`datepicker-day ${!isCurrentMonth ? "datepicker-day-outside" : ""} ${isSelected ? "datepicker-day-selected" : ""} ${isTodayDate && !isSelected ? "datepicker-day-today" : ""} ${!isAvailable ? "datepicker-day-unavailable" : ""}`}
+                  className={`datepicker-day ${!isCurrentMonth ? "datepicker-day-outside" : ""} ${isSelected ? "datepicker-day-selected" : ""} ${isTodayDate && !isSelected ? "datepicker-day-today" : ""} ${!isAvailable ? "datepicker-day-unavailable" : ""} ${hasItems ? "datepicker-day-has-items" : ""}`}
                 >
+                  {hasItems ? (
+                    <svg
+                      className="datepicker-day-progress"
+                      viewBox="0 0 100 100"
+                      aria-hidden="true"
+                    >
+                      <circle
+                        className="datepicker-day-progress-track"
+                        cx="50"
+                        cy="50"
+                        r={DAY_PROGRESS_RADIUS}
+                      />
+                      {completedRatio >= 1 ? (
+                        <circle
+                          className="datepicker-day-progress-value"
+                          cx="50"
+                          cy="50"
+                          r={DAY_PROGRESS_RADIUS}
+                        />
+                      ) : completedRatio > 0 ? (
+                        <path
+                          className="datepicker-day-progress-value"
+                          d={progressArc}
+                        />
+                      ) : null}
+                    </svg>
+                  ) : null}
                   {format(day, "d")}
                 </button>
               );
