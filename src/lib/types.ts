@@ -1,5 +1,6 @@
 export type TodoItem = {
   id: string;
+  referenceId: string;
   text: string;
   completed: boolean;
   pinned: boolean;

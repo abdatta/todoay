@@ -40,6 +40,7 @@ type StoreValue = {
   updateTodo: (date: string, todoId: string, patch: Partial<TodoItem>) => void;
   deleteTodo: (date: string, todoId: string) => void;
   copyTodoToDate: (fromDate: string, todoId: string, toDate: string) => void;
+  cloneTodoReferenceToDate: (fromDate: string, todoId: string, toDate: string) => void;
   addNote: (date: string) => void;
   updateNoteDoc: (noteId: string, patch: Partial<NoteDocument>) => void;
   removeNoteFromDate: (date: string, noteId: string) => void;
@@ -69,7 +70,17 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (raw) {
-        setState({ ...createInitialState(), ...(JSON.parse(raw) as TodoayState) });
+        const parsed = { ...createInitialState(), ...(JSON.parse(raw) as TodoayState) };
+        const todosByDate = Object.fromEntries(
+          Object.entries(parsed.todosByDate).map(([date, items]) => [
+            date,
+            items.map((todo) => ({
+              ...todo,
+              referenceId: todo.referenceId ?? todo.id,
+            })),
+          ]),
+        );
+        setState({ ...parsed, todosByDate });
       }
     } catch (error) {
       console.error("Failed to load Todoay state", error);
@@ -88,6 +99,7 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
   const addTodo = useCallback<StoreValue["addTodo"]>((date) => {
     const nextTodo: TodoItem = {
       id: createId(),
+      referenceId: createId(),
       text: "",
       completed: false,
       pinned: false,
@@ -111,15 +123,37 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
     state,
     addTodo,
     updateTodo(date, todoId, patch) {
-      setState((current) => ({
-        ...current,
-        todosByDate: {
-          ...current.todosByDate,
-          [date]: (current.todosByDate[date] ?? []).map((todo) =>
-            todo.id === todoId ? { ...todo, ...patch } : todo,
+      setState((current) => {
+        const sourceTodo = (current.todosByDate[date] ?? []).find((todo) => todo.id === todoId);
+        if (!sourceTodo) {
+          return current;
+        }
+        const sharedPatch = {
+          text: patch.text,
+          completed: patch.completed,
+          pinned: patch.pinned,
+        };
+        return {
+          ...current,
+          todosByDate: Object.fromEntries(
+            Object.entries(current.todosByDate).map(([todoDate, items]) => [
+              todoDate,
+              items.map((todo) =>
+                todo.referenceId === sourceTodo.referenceId
+                  ? {
+                      ...todo,
+                      ...Object.fromEntries(
+                        Object.entries(sharedPatch).filter(([, value]) => value !== undefined),
+                      ),
+                    }
+                  : todo.id === todoId && todoDate === date
+                    ? { ...todo, ...patch }
+                    : todo,
+              ),
+            ]),
           ),
-        },
-      }));
+        };
+      });
     },
     deleteTodo(date, todoId) {
       setState((current) => ({
@@ -145,10 +179,37 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
         const nextTodo: TodoItem = {
           ...sourceTodo,
           id: createId(),
+          referenceId: createId(),
           completed: false,
           sourceDate: toDate,
           createdAt: new Date().toISOString(),
           copiedFromDate: fromDate,
+        };
+        return {
+          ...current,
+          todosByDate: {
+            ...current.todosByDate,
+            [toDate]: [...(current.todosByDate[toDate] ?? []), nextTodo],
+          },
+        };
+      });
+    },
+    cloneTodoReferenceToDate(fromDate, todoId, toDate) {
+      setState((current) => {
+        const sourceTodo = (current.todosByDate[fromDate] ?? []).find((todo) => todo.id === todoId);
+        if (!sourceTodo) {
+          return current;
+        }
+        const existingReference = (current.todosByDate[toDate] ?? []).some(
+          (todo) => todo.referenceId === sourceTodo.referenceId,
+        );
+        if (existingReference) {
+          return current;
+        }
+        const nextTodo: TodoItem = {
+          ...sourceTodo,
+          id: createId(),
+          sourceDate: toDate,
         };
         return {
           ...current,
@@ -311,7 +372,14 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
         .filter(([todoDate]) => todoDate !== today)
         .flatMap(([, items]) => items)
         .filter((todo) => todo.pinned)
-        .filter((todo) => !direct.some((existing) => existing.id === todo.id || existing.text === todo.text));
+        .filter((todo) =>
+          !direct.some(
+            (existing) =>
+              existing.id === todo.id ||
+              existing.referenceId === todo.referenceId ||
+              existing.text === todo.text,
+          ),
+        );
       return [...direct, ...pinnedElsewhere];
     },
     getVisibleNoteIds(date, today) {

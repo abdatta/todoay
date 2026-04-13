@@ -407,7 +407,7 @@ input {
 
 .task-list-card {
   padding: 18px 0 8px;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .custom-datepicker {
@@ -584,6 +584,7 @@ input {
   align-items: center;
   min-height: 52px;
   padding: 0 20px;
+  position: relative;
 }
 
 .task-line + .task-line {
@@ -617,15 +618,71 @@ input {
 .task-line-action {
   width: auto;
   height: auto;
-  padding: 4px;
+  padding: 6px;
   color: var(--text-muted);
   background: transparent;
   border: none;
   opacity: 0;
+  border-radius: 999px;
 }
 
 .task-line-action:hover {
   color: var(--text-main);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.task-line-menu {
+  position: relative;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.task-line-menu-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 10;
+  min-width: 164px;
+  padding: 6px;
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle);
+  background: #242321;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35), var(--glass-shadow);
+}
+
+.task-line-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  color: var(--text-main);
+  border-radius: 9px;
+  text-align: left;
+  white-space: nowrap;
+  font-size: 0.95rem;
+}
+
+.task-line-menu-item:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.task-line-menu-item:disabled {
+  color: var(--text-light);
+  cursor: default;
+}
+
+.task-line-menu-item.danger {
+  color: #ff9f95;
+}
+
+.task-line-menu-meta {
+  margin-top: 4px;
+  padding: 6px 10px 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
 }
 
 .task-add-row {
