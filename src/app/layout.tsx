@@ -14,6 +14,7 @@ export const metadata: Metadata = {
     title: "Todoay",
   },
   icons: {
+    icon: "/favicon.ico",
     apple: "/icons/apple-touch-icon.png",
   },
 };
