@@ -13,6 +13,7 @@ import type {
   NoteDocument,
   TodoItem,
   TodoayState,
+  ThemeMode,
   UndatedChecklistItem,
   UndatedEntry,
 } from "@/lib/types";
@@ -31,11 +32,14 @@ const createInitialState = (): TodoayState => ({
   noteIdsByDate: {},
   noteDocs: {},
   undatedEntries: [],
+  themeMode: "system",
 });
 
 type StoreValue = {
   ready: boolean;
   state: TodoayState;
+  resolvedTheme: Exclude<ThemeMode, "system">;
+  setThemeMode: (themeMode: ThemeMode) => void;
   addTodo: (date: string) => string;
   updateTodo: (date: string, todoId: string, patch: Partial<TodoItem>) => void;
   deleteTodo: (date: string, todoId: string) => void;
@@ -65,6 +69,7 @@ const TodoayContext = createContext<StoreValue | null>(null);
 export function TodoayProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<TodoayState>(createInitialState);
   const [ready, setReady] = useState(false);
+  const [systemTheme, setSystemTheme] = useState<Exclude<ThemeMode, "system">>("dark");
 
   useEffect(() => {
     try {
@@ -90,11 +95,32 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const applySystemTheme = () => {
+      setSystemTheme(mediaQuery.matches ? "dark" : "light");
+    };
+
+    applySystemTheme();
+    mediaQuery.addEventListener("change", applySystemTheme);
+
+    return () => {
+      mediaQuery.removeEventListener("change", applySystemTheme);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!ready) {
       return;
     }
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }, [ready, state]);
+
+  const resolvedTheme = state.themeMode === "system" ? systemTheme : state.themeMode;
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = resolvedTheme;
+    document.documentElement.style.colorScheme = resolvedTheme;
+  }, [resolvedTheme]);
 
   const addTodo = useCallback<StoreValue["addTodo"]>((date) => {
     const nextTodo: TodoItem = {
@@ -121,6 +147,10 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
   const value = useMemo<StoreValue>(() => ({
     ready,
     state,
+    resolvedTheme,
+    setThemeMode(themeMode) {
+      setState((current) => ({ ...current, themeMode }));
+    },
     addTodo,
     updateTodo(date, todoId, patch) {
       setState((current) => {
@@ -402,7 +432,7 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
         .map(([date]) => date)
         .sort();
     },
-  }), [addTodo, ready, state]);
+  }), [addTodo, ready, resolvedTheme, state]);
 
   return <TodoayContext.Provider value={value}>{children}</TodoayContext.Provider>;
 }

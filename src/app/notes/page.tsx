@@ -42,6 +42,17 @@ function NotesScreen() {
   const noteIds = useMemo(() => getVisibleNoteIds(selectedDate, today), [getVisibleNoteIds, selectedDate, today]);
   const notes = noteIds.map((id) => state.noteDocs[id]).filter(Boolean);
   const hasSavedNotes = notes.length > 0;
+  const dateProgress = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(state.noteIdsByDate).flatMap(([date, ids]) => (
+          ids.length > 0
+            ? [[date, { completed: 1, total: 1, useTrackColorValue: true }] as const]
+            : []
+        )),
+      ),
+    [state.noteIdsByDate],
+  );
 
   const handleDraftChange = (content: string) => {
     if (!content) {
@@ -96,7 +107,7 @@ function NotesScreen() {
         icon={<NotebookPen size={30} color="var(--accent-color)" />}
       />
 
-      <DateNavigator date={selectedDate} onChange={setSelectedDate} />
+      <DateNavigator date={selectedDate} onChange={setSelectedDate} dateProgress={dateProgress} />
 
       <section className="card panel-stack">
         {hasSavedNotes ? (

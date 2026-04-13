@@ -1,21 +1,50 @@
 "use client";
 
-import { Settings, Database, CalendarDays, FolderOpen } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Settings, MoonStar } from "lucide-react";
 import ClientReady from "@/components/ClientReady";
 import PageHeader from "@/components/PageHeader";
 import { useTodoay } from "@/lib/store";
+import type { ThemeMode } from "@/lib/types";
+
+const THEME_OPTIONS: { value: ThemeMode; label: string }[] = [
+  { value: "dark", label: "Dark" },
+  { value: "light", label: "Light" },
+  { value: "system", label: "System" },
+];
 
 function SettingsScreen() {
-  const { ready, state } = useTodoay();
+  const { ready, setThemeMode, state } = useTodoay();
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) {
+        setIsMenuOpen(false);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, []);
 
   if (!ready) {
     return <div className="loading-screen">Loading Todoay...</div>;
   }
 
-  const taskDates = Object.keys(state.todosByDate).length;
-  const noteDates = Object.keys(state.noteIdsByDate).length;
-  const noteCount = Object.keys(state.noteDocs).length;
-  const miscCount = state.undatedEntries.length;
+  const selectedTheme = THEME_OPTIONS.find((option) => option.value === state.themeMode) ?? THEME_OPTIONS[0];
 
   return (
     <div className="app-shell">
@@ -24,52 +53,50 @@ function SettingsScreen() {
         icon={<Settings size={30} color="var(--accent-color)" />}
       />
 
-      <div className="section-grid">
-        <section className="card panel-stack">
-          <div className="inline-toolbar">
-            <Database size={18} color="var(--accent-color)" />
-            <h2 style={{ fontFamily: "var(--font-heading)", fontSize: "1.1rem" }}>Storage Overview</h2>
-          </div>
-          <div className="summary-grid">
-            <div className="card summary-card">
-              <span className="summary-number">{taskDates}</span>
-              <span className="helper-text">Dates with tasks</span>
-            </div>
-            <div className="card summary-card">
-              <span className="summary-number">{noteCount}</span>
-              <span className="helper-text">Saved notes</span>
-            </div>
-            <div className="card summary-card">
-              <span className="summary-number">{miscCount}</span>
-              <span className="helper-text">Misc entries</span>
-            </div>
-          </div>
-          <p className="helper-text">All content is currently stored in this browser via local storage.</p>
-        </section>
+      <section className="card settings-card">
+        <label className="settings-row">
+          <span className="settings-row-label">
+            <MoonStar size={18} color="var(--accent-color)" />
+            <span>Dark Mode</span>
+          </span>
+          <div className="settings-select-shell" ref={menuRef}>
+            <button
+              type="button"
+              className={`settings-select ${isMenuOpen ? "open" : ""}`}
+              onClick={() => setIsMenuOpen((open) => !open)}
+              aria-label="Dark mode preference"
+              aria-haspopup="listbox"
+              aria-expanded={isMenuOpen}
+            >
+              {selectedTheme.label}
+            </button>
 
-        <section className="card panel-stack">
-          <div className="inline-toolbar">
-            <CalendarDays size={18} color="var(--accent-color)" />
-            <h2 style={{ fontFamily: "var(--font-heading)", fontSize: "1.1rem" }}>Organization</h2>
-          </div>
-          <div className="helper-text">Tasks are grouped across {taskDates} dates and notes are linked across {noteDates} date views.</div>
-          <div className="helper-text">Pinned tasks and notes automatically stay visible on today when you need quick carry-forward context.</div>
-        </section>
+            {isMenuOpen ? (
+              <div className="settings-menu" role="listbox" aria-label="Dark mode options">
+                {THEME_OPTIONS.map((option) => {
+                  const isSelected = option.value === state.themeMode;
 
-        <section className="card panel-stack">
-          <div className="inline-toolbar">
-            <FolderOpen size={18} color="var(--accent-color)" />
-            <h2 style={{ fontFamily: "var(--font-heading)", fontSize: "1.1rem" }}>App Structure</h2>
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      role="option"
+                      aria-selected={isSelected}
+                      className={`settings-menu-item ${isSelected ? "selected" : ""}`}
+                      onClick={() => {
+                        setThemeMode(option.value as ThemeMode);
+                        setIsMenuOpen(false);
+                      }}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
           </div>
-          <div className="note-links">
-            <span className="note-link-chip">Tasks</span>
-            <span className="note-link-chip">Notes</span>
-            <span className="note-link-chip">Misc</span>
-            <span className="note-link-chip">Settings</span>
-          </div>
-          <p className="helper-text">This page is ready to hold future preferences if you want us to add theme, export, or reset controls later.</p>
-        </section>
-      </div>
+        </label>
+      </section>
     </div>
   );
 }

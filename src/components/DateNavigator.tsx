@@ -11,7 +11,7 @@ export default function DateNavigator({
 }: {
   date: string;
   onChange: (value: string) => void;
-  dateProgress?: Record<string, { completed: number; total: number }>;
+  dateProgress?: Record<string, { completed: number; total: number; showTrackWhenSelected?: boolean; useTrackColorValue?: boolean }>;
 }) {
   const parsed = parseISO(date);
 

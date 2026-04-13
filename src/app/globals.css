@@ -27,6 +27,26 @@
   --transition-smooth: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg-color: #f5efe6;
+  --bg-glow-a: rgba(255, 169, 126, 0.2);
+  --bg-glow-b: rgba(217, 148, 91, 0.12);
+  --text-main: #241f1a;
+  --text-muted: #6f6357;
+  --text-light: #9d8f82;
+  --border-subtle: rgba(82, 59, 40, 0.12);
+  --accent-gradient: linear-gradient(135deg, #e77956 0%, #c8703b 100%);
+  --accent-gradient-hover: linear-gradient(135deg, #d96b48 0%, #b96531 100%);
+  --accent-color: #d96b48;
+  --accent-soft: rgba(217, 107, 72, 0.14);
+  --card-bg: rgba(255, 250, 244, 0.84);
+  --nav-bg: rgba(255, 248, 240, 0.92);
+  --card-shadow: 0 14px 38px -18px rgba(96, 71, 43, 0.3), 0 1px 3px rgba(96, 71, 43, 0.1);
+  --glass-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+  --fade-gradient: linear-gradient(to bottom, rgba(255, 248, 240, 0), rgba(255, 248, 240, 1));
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -567,6 +587,10 @@ input {
   stroke-linejoin: round;
 }
 
+.datepicker-day-progress-value-track-tone {
+  stroke: color-mix(in srgb, var(--accent-color) 22%, transparent);
+}
+
 .datepicker-day-selected {
   background: var(--accent-color) !important;
   border-color: transparent !important;
@@ -577,11 +601,15 @@ input {
 
 .datepicker-day-selected .datepicker-day-progress-track {
   stroke: var(--accent-color);
-  opacity: 1;
+  opacity: 0;
+}
+
+.datepicker-day-selected.datepicker-day-selected-track-visible .datepicker-day-progress-track {
+  opacity: 0;
 }
 
 .datepicker-day-selected .datepicker-day-progress-value {
-  stroke: #fff;
+  opacity: 0;
 }
 
 .datepicker-day-unavailable {
@@ -823,6 +851,123 @@ input {
 .section-grid {
   display: grid;
   gap: 18px;
+}
+
+.settings-card {
+  max-width: 540px;
+  padding: 18px 20px;
+}
+
+.settings-select-shell {
+  position: relative;
+  width: auto;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.settings-row-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  font-family: var(--font-heading);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.settings-select {
+  min-width: 116px;
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 65%, transparent);
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--card-bg) 92%, white 8%), var(--card-bg));
+  color: var(--text-main);
+  padding: 11px 18px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 8px 22px -16px rgba(0, 0, 0, 0.45);
+}
+
+.settings-select:focus,
+.settings-select.open {
+  border-color: color-mix(in srgb, var(--accent-color) 60%, transparent);
+  outline: none;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 0 0 4px color-mix(in srgb, var(--accent-color) 14%, transparent),
+    0 12px 28px -18px rgba(0, 0, 0, 0.5);
+}
+
+.settings-select:hover {
+  border-color: color-mix(in srgb, var(--accent-color) 30%, var(--border-subtle));
+}
+
+.settings-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border-radius: 18px;
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 75%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--nav-bg) 94%, white 6%), var(--nav-bg));
+  box-shadow:
+    0 20px 40px -24px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+}
+
+.settings-menu-item {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  color: var(--text-muted);
+  text-align: center;
+  font-size: 0.94rem;
+  font-weight: 600;
+  transition: var(--transition-smooth);
+}
+
+.settings-menu-item:hover,
+.settings-menu-item:focus-visible {
+  color: var(--text-main);
+  background: color-mix(in srgb, var(--accent-soft) 72%, transparent);
+  outline: none;
+}
+
+.settings-menu-item.selected {
+  color: var(--text-main);
+  background: color-mix(in srgb, var(--accent-soft) 88%, transparent);
+}
+
+@media (max-width: 520px) {
+  .settings-row {
+    gap: 12px;
+  }
+
+  .settings-row-label {
+    font-size: 0.95rem;
+  }
+
+  .settings-select-shell {
+    width: auto;
+  }
 }
 
 .undated-list-items {

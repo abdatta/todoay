@@ -32,9 +32,12 @@ export type UndatedEntry = {
   items: UndatedChecklistItem[];
 };
 
+export type ThemeMode = "dark" | "light" | "system";
+
 export type TodoayState = {
   todosByDate: Record<string, TodoItem[]>;
   noteIdsByDate: Record<string, string[]>;
   noteDocs: Record<string, NoteDocument>;
   undatedEntries: UndatedEntry[];
+  themeMode: ThemeMode;
 };

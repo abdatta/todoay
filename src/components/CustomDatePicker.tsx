@@ -44,7 +44,7 @@ interface CustomDatePickerProps {
   selectedDate: string;
   onChange: (date: string) => void;
   displayDates?: string[];
-  dateProgress?: Record<string, { completed: number; total: number }>;
+  dateProgress?: Record<string, { completed: number; total: number; showTrackWhenSelected?: boolean; useTrackColorValue?: boolean }>;
   disabled?: boolean;
 }
 
@@ -208,6 +208,8 @@ export default function CustomDatePicker({
               const progress = dateProgress[dayStr];
               const hasItems = Boolean(progress && progress.total > 0);
               const completedRatio = hasItems ? progress.completed / progress.total : 0;
+              const showTrackWhenSelected = Boolean(progress?.showTrackWhenSelected);
+              const useTrackColorValue = Boolean(progress?.useTrackColorValue);
               const progressArc = completedRatio > 0 && completedRatio < 1
                 ? describeCounterClockwiseArc(completedRatio)
                 : "";
@@ -217,7 +219,7 @@ export default function CustomDatePicker({
                   key={day.toISOString()}
                   type="button"
                   onClick={() => handleSelectDay(day)}
-                  className={`datepicker-day ${!isCurrentMonth ? "datepicker-day-outside" : ""} ${isSelected ? "datepicker-day-selected" : ""} ${isTodayDate && !isSelected ? "datepicker-day-today" : ""} ${!isAvailable ? "datepicker-day-unavailable" : ""} ${hasItems ? "datepicker-day-has-items" : ""}`}
+                  className={`datepicker-day ${!isCurrentMonth ? "datepicker-day-outside" : ""} ${isSelected ? "datepicker-day-selected" : ""} ${isTodayDate && !isSelected ? "datepicker-day-today" : ""} ${!isAvailable ? "datepicker-day-unavailable" : ""} ${hasItems ? "datepicker-day-has-items" : ""} ${isSelected && showTrackWhenSelected && completedRatio === 0 ? "datepicker-day-selected-track-visible" : ""}`}
                 >
                   {hasItems ? (
                     <svg
@@ -233,14 +235,14 @@ export default function CustomDatePicker({
                       />
                       {completedRatio >= 1 ? (
                         <circle
-                          className="datepicker-day-progress-value"
+                          className={`datepicker-day-progress-value ${useTrackColorValue ? "datepicker-day-progress-value-track-tone" : ""}`}
                           cx="50"
                           cy="50"
                           r={DAY_PROGRESS_RADIUS}
                         />
                       ) : completedRatio > 0 ? (
                         <path
-                          className="datepicker-day-progress-value"
+                          className={`datepicker-day-progress-value ${useTrackColorValue ? "datepicker-day-progress-value-track-tone" : ""}`}
                           d={progressArc}
                         />
                       ) : null}
