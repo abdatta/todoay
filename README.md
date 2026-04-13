@@ -27,3 +27,7 @@ This repo includes a GitHub Actions workflow at `.github/workflows/deploy-pages.
 4. Push to `main` or run the workflow manually from the `Actions` tab.
 
 The workflow builds a static export and deploys the `out` directory to project Pages using the repository path as the production base path.
+
+## PWA installability
+
+The app includes a web app manifest, install icons, and a service worker so it can be installed from Chrome on Android after deployment.
