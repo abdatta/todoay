@@ -41,7 +41,7 @@ type StoreValue = {
   deleteTodo: (date: string, todoId: string) => void;
   copyTodoToDate: (fromDate: string, todoId: string, toDate: string) => void;
   cloneTodoReferenceToDate: (fromDate: string, todoId: string, toDate: string) => void;
-  addNote: (date: string) => void;
+  addNote: (date: string) => string;
   updateNoteDoc: (noteId: string, patch: Partial<NoteDocument>) => void;
   removeNoteFromDate: (date: string, noteId: string) => void;
   carryNoteToDate: (fromDate: string, noteId: string, toDate: string) => void;
@@ -221,17 +221,18 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
       });
     },
     addNote(date) {
+      const noteId = createId();
+      const now = new Date().toISOString();
+      const noteDoc: NoteDocument = {
+        id: noteId,
+        title: "Untitled note",
+        content: "",
+        pinned: false,
+        createdAt: now,
+        updatedAt: now,
+      };
+
       setState((current) => {
-        const noteId = createId();
-        const now = new Date().toISOString();
-        const noteDoc: NoteDocument = {
-          id: noteId,
-          title: "Untitled note",
-          content: "",
-          pinned: false,
-          createdAt: now,
-          updatedAt: now,
-        };
         return {
           ...current,
           noteDocs: {
@@ -244,6 +245,8 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
           },
         };
       });
+
+      return noteId;
     },
     updateNoteDoc(noteId, patch) {
       setState((current) => {
