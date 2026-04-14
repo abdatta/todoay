@@ -44,7 +44,8 @@ type StoreValue = {
   updateTodo: (date: string, todoId: string, patch: Partial<TodoItem>) => void;
   deleteTodo: (date: string, todoId: string) => void;
   copyTodoToDate: (fromDate: string, todoId: string, toDate: string) => void;
-  cloneTodoReferenceToDate: (fromDate: string, todoId: string, toDate: string) => void;
+  copyTodoReferenceToDate: (fromDate: string, todoId: string, toDate: string) => void;
+  moveTodoReferenceToDate: (fromDate: string, todoId: string, toDate: string) => void;
   addNote: (date: string) => string;
   updateNoteDoc: (noteId: string, patch: Partial<NoteDocument>) => void;
   removeNoteFromDate: (date: string, noteId: string) => void;
@@ -224,7 +225,7 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
         };
       });
     },
-    cloneTodoReferenceToDate(fromDate, todoId, toDate) {
+    copyTodoReferenceToDate(fromDate, todoId, toDate) {
       setState((current) => {
         const sourceTodo = (current.todosByDate[fromDate] ?? []).find((todo) => todo.id === todoId);
         if (!sourceTodo) {
@@ -246,6 +247,29 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
           todosByDate: {
             ...current.todosByDate,
             [toDate]: [...(current.todosByDate[toDate] ?? []), nextTodo],
+          },
+        };
+      });
+    },
+    moveTodoReferenceToDate(fromDate, todoId, toDate) {
+      setState((current) => {
+        const sourceTodo = (current.todosByDate[fromDate] ?? []).find((todo) => todo.id === todoId);
+        if (!sourceTodo || fromDate === toDate) {
+          return current;
+        }
+
+        const targetTodos = current.todosByDate[toDate] ?? [];
+        const existingReference = targetTodos.some((todo) => todo.referenceId === sourceTodo.referenceId);
+        const nextFromDateTodos = (current.todosByDate[fromDate] ?? []).filter((todo) => todo.id !== todoId);
+
+        return {
+          ...current,
+          todosByDate: {
+            ...current.todosByDate,
+            [fromDate]: nextFromDateTodos,
+            [toDate]: existingReference
+              ? targetTodos
+              : [...targetTodos, { ...sourceTodo, sourceDate: toDate }],
           },
         };
       });

@@ -16,10 +16,37 @@ import {
   addMonths,
   subMonths,
 } from "date-fns";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, X } from "lucide-react";
 
 const DAY_PROGRESS_RADIUS = 46;
 const DAY_PROGRESS_CENTER = 50;
+
+type DateProgressMap = Record<string, {
+  completed: number;
+  total: number;
+  showTrackWhenSelected?: boolean;
+  useTrackColorValue?: boolean;
+}>;
+
+interface DatePickerPopupContentProps {
+  selectedDate: string;
+  onChange: (date: string) => void;
+  displayDates?: string[];
+  dateProgress?: DateProgressMap;
+  viewDate: Date;
+  onViewDateChange: (date: Date) => void;
+  popupClassName?: string;
+  title?: string;
+  onCancel?: () => void;
+}
+
+interface CustomDatePickerProps {
+  selectedDate: string;
+  onChange: (date: string) => void;
+  displayDates?: string[];
+  dateProgress?: DateProgressMap;
+  disabled?: boolean;
+}
 
 function polarToCartesian(angleDegrees: number) {
   const angleRadians = (angleDegrees * Math.PI) / 180;
@@ -40,12 +67,187 @@ function describeCounterClockwiseArc(completedRatio: number) {
   return `M ${start.x} ${start.y} A ${DAY_PROGRESS_RADIUS} ${DAY_PROGRESS_RADIUS} 0 ${largeArcFlag} 0 ${end.x} ${end.y}`;
 }
 
-interface CustomDatePickerProps {
-  selectedDate: string;
-  onChange: (date: string) => void;
-  displayDates?: string[];
-  dateProgress?: Record<string, { completed: number; total: number; showTrackWhenSelected?: boolean; useTrackColorValue?: boolean }>;
-  disabled?: boolean;
+export function DatePickerPopupContent({
+  selectedDate,
+  onChange,
+  displayDates = [],
+  dateProgress = {},
+  viewDate,
+  onViewDateChange,
+  popupClassName,
+  title,
+  onCancel,
+}: DatePickerPopupContentProps) {
+  const hasRestrictedDates = displayDates.length > 0;
+
+  const handlePrevMonth = (event: React.MouseEvent) => {
+    event.stopPropagation();
+    onViewDateChange(subMonths(viewDate, 1));
+  };
+
+  const handleNextMonth = (event: React.MouseEvent) => {
+    event.stopPropagation();
+    onViewDateChange(addMonths(viewDate, 1));
+  };
+
+  let oldestDateStr = "";
+  let oldestDateLabel = "Oldest";
+  if (hasRestrictedDates) {
+    oldestDateStr = displayDates.reduce(
+      (min, current) => (current < min ? current : min),
+      displayDates[0],
+    );
+    if (isValid(parseISO(oldestDateStr))) {
+      const oldestDate = parseISO(oldestDateStr);
+      const isCurrentYear = oldestDate.getFullYear() === new Date().getFullYear();
+      oldestDateLabel = format(oldestDate, isCurrentYear ? "MMM d" : "MMM d, yyyy");
+    }
+  }
+
+  const handleOldest = (event: React.MouseEvent) => {
+    event.stopPropagation();
+    if (oldestDateStr) {
+      onChange(oldestDateStr);
+    }
+  };
+
+  const handleToday = (event: React.MouseEvent) => {
+    event.stopPropagation();
+    onChange(format(new Date(), "yyyy-MM-dd"));
+  };
+
+  const monthStart = startOfMonth(viewDate);
+  const monthEnd = endOfMonth(monthStart);
+  const startDate = new Date(monthStart);
+  startDate.setDate(startDate.getDate() - startDate.getDay());
+
+  const endDate = new Date(monthEnd);
+  if (endDate.getDay() !== 6) {
+    endDate.setDate(endDate.getDate() + (6 - endDate.getDay()));
+  }
+
+  const calendarDays = eachDayOfInterval({ start: startDate, end: endDate });
+
+  return (
+    <div className={`datepicker-popup${popupClassName ? ` ${popupClassName}` : ""}`}>
+      {title ? (
+        <div className="datepicker-modal-header">
+          <div className="datepicker-modal-title">{title}</div>
+          {onCancel ? (
+            <button
+              type="button"
+              className="datepicker-modal-close"
+              aria-label="Cancel"
+              onClick={onCancel}
+            >
+              <X size={16} />
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+      <div className="datepicker-header">
+        <button
+          type="button"
+          onClick={handlePrevMonth}
+          className="btn-icon-clear datepicker-nav"
+        >
+          <ChevronLeft size={16} strokeWidth={2.5} />
+        </button>
+        <div className="datepicker-month-year">{format(viewDate, "MMMM yyyy")}</div>
+        <button
+          type="button"
+          onClick={handleNextMonth}
+          className="btn-icon-clear datepicker-nav"
+        >
+          <ChevronRight size={16} strokeWidth={2.5} />
+        </button>
+      </div>
+
+      <div className="datepicker-week-days">
+        {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((day) => (
+          <div key={day} className="datepicker-week-day">
+            {day}
+          </div>
+        ))}
+      </div>
+
+      <div className="datepicker-grid">
+        {calendarDays.map((day) => {
+          const dayStr = format(day, "yyyy-MM-dd");
+          const isSelected = selectedDate === dayStr;
+          const isCurrentMonth = isSameMonth(day, monthStart);
+          const isTodayDate = isSameDay(day, new Date());
+          const isAvailable = !hasRestrictedDates || displayDates.includes(dayStr);
+          const progress = dateProgress[dayStr];
+          const hasItems = Boolean(progress && progress.total > 0);
+          const completedRatio = hasItems ? progress.completed / progress.total : 0;
+          const showTrackWhenSelected = Boolean(progress?.showTrackWhenSelected);
+          const useTrackColorValue = Boolean(progress?.useTrackColorValue);
+          const progressArc = completedRatio > 0 && completedRatio < 1
+            ? describeCounterClockwiseArc(completedRatio)
+            : "";
+
+          return (
+            <button
+              key={day.toISOString()}
+              type="button"
+              onClick={() => onChange(dayStr)}
+              className={`datepicker-day ${!isCurrentMonth ? "datepicker-day-outside" : ""} ${isSelected ? "datepicker-day-selected" : ""} ${isTodayDate && !isSelected ? "datepicker-day-today" : ""} ${!isAvailable ? "datepicker-day-unavailable" : ""} ${hasItems ? "datepicker-day-has-items" : ""} ${isSelected && showTrackWhenSelected && completedRatio === 0 ? "datepicker-day-selected-track-visible" : ""}`}
+            >
+              {hasItems ? (
+                <svg
+                  className="datepicker-day-progress"
+                  viewBox="0 0 100 100"
+                  aria-hidden="true"
+                >
+                  <circle
+                    className="datepicker-day-progress-track"
+                    cx="50"
+                    cy="50"
+                    r={DAY_PROGRESS_RADIUS}
+                  />
+                  {completedRatio >= 1 ? (
+                    <circle
+                      className={`datepicker-day-progress-value ${useTrackColorValue ? "datepicker-day-progress-value-track-tone" : ""}`}
+                      cx="50"
+                      cy="50"
+                      r={DAY_PROGRESS_RADIUS}
+                    />
+                  ) : completedRatio > 0 ? (
+                    <path
+                      className={`datepicker-day-progress-value ${useTrackColorValue ? "datepicker-day-progress-value-track-tone" : ""}`}
+                      d={progressArc}
+                    />
+                  ) : null}
+                </svg>
+              ) : null}
+              {format(day, "d")}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="datepicker-actions">
+        {hasRestrictedDates ? (
+          <button
+            type="button"
+            className="datepicker-action-btn"
+            onClick={handleOldest}
+            disabled={!oldestDateStr}
+          >
+            {oldestDateLabel}
+          </button>
+        ) : <span />}
+        <button
+          type="button"
+          className="datepicker-action-btn"
+          onClick={handleToday}
+        >
+          Today
+        </button>
+      </div>
+    </div>
+  );
 }
 
 export default function CustomDatePicker({
@@ -62,7 +264,6 @@ export default function CustomDatePicker({
       : new Date();
   const [viewDate, setViewDate] = useState<Date>(initialViewDate);
   const popupRef = useRef<HTMLDivElement>(null);
-  const hasRestrictedDates = displayDates.length > 0;
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -87,61 +288,6 @@ export default function CustomDatePicker({
       setViewDate(parseISO(selectedDate));
     }
   };
-
-  const handlePrevMonth = (event: React.MouseEvent) => {
-    event.stopPropagation();
-    setViewDate(subMonths(viewDate, 1));
-  };
-
-  const handleNextMonth = (event: React.MouseEvent) => {
-    event.stopPropagation();
-    setViewDate(addMonths(viewDate, 1));
-  };
-
-  const handleSelectDay = (date: Date) => {
-    onChange(format(date, "yyyy-MM-dd"));
-    setIsOpen(false);
-  };
-
-  let oldestDateStr = "";
-  let oldestDateLabel = "Oldest";
-  if (hasRestrictedDates) {
-    oldestDateStr = displayDates.reduce(
-      (min, current) => (current < min ? current : min),
-      displayDates[0],
-    );
-    if (isValid(parseISO(oldestDateStr))) {
-      const oldestDate = parseISO(oldestDateStr);
-      const isCurrentYear = oldestDate.getFullYear() === new Date().getFullYear();
-      oldestDateLabel = format(oldestDate, isCurrentYear ? "MMM d" : "MMM d, yyyy");
-    }
-  }
-
-  const handleOldest = (event: React.MouseEvent) => {
-    event.stopPropagation();
-    if (oldestDateStr) {
-      onChange(oldestDateStr);
-    }
-    setIsOpen(false);
-  };
-
-  const handleToday = (event: React.MouseEvent) => {
-    event.stopPropagation();
-    onChange(format(new Date(), "yyyy-MM-dd"));
-    setIsOpen(false);
-  };
-
-  const monthStart = startOfMonth(viewDate);
-  const monthEnd = endOfMonth(monthStart);
-  const startDate = new Date(monthStart);
-  startDate.setDate(startDate.getDate() - startDate.getDay());
-
-  const endDate = new Date(monthEnd);
-  if (endDate.getDay() !== 6) {
-    endDate.setDate(endDate.getDate() + (6 - endDate.getDay()));
-  }
-
-  const calendarDays = eachDayOfInterval({ start: startDate, end: endDate });
 
   let buttonText = "Select Date";
   if (selectedDate && isValid(parseISO(selectedDate))) {
@@ -171,109 +317,17 @@ export default function CustomDatePicker({
       </button>
 
       {isOpen ? (
-        <div className="datepicker-popup">
-          <div className="datepicker-header">
-            <button
-              type="button"
-              onClick={handlePrevMonth}
-              className="btn-icon-clear datepicker-nav"
-            >
-              <ChevronLeft size={16} strokeWidth={2.5} />
-            </button>
-            <div className="datepicker-month-year">{format(viewDate, "MMMM yyyy")}</div>
-            <button
-              type="button"
-              onClick={handleNextMonth}
-              className="btn-icon-clear datepicker-nav"
-            >
-              <ChevronRight size={16} strokeWidth={2.5} />
-            </button>
-          </div>
-
-          <div className="datepicker-week-days">
-            {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((day) => (
-              <div key={day} className="datepicker-week-day">
-                {day}
-              </div>
-            ))}
-          </div>
-
-          <div className="datepicker-grid">
-            {calendarDays.map((day) => {
-              const dayStr = format(day, "yyyy-MM-dd");
-              const isSelected = selectedDate === dayStr;
-              const isCurrentMonth = isSameMonth(day, monthStart);
-              const isTodayDate = isSameDay(day, new Date());
-              const isAvailable = !hasRestrictedDates || displayDates.includes(dayStr);
-              const progress = dateProgress[dayStr];
-              const hasItems = Boolean(progress && progress.total > 0);
-              const completedRatio = hasItems ? progress.completed / progress.total : 0;
-              const showTrackWhenSelected = Boolean(progress?.showTrackWhenSelected);
-              const useTrackColorValue = Boolean(progress?.useTrackColorValue);
-              const progressArc = completedRatio > 0 && completedRatio < 1
-                ? describeCounterClockwiseArc(completedRatio)
-                : "";
-
-              return (
-                <button
-                  key={day.toISOString()}
-                  type="button"
-                  onClick={() => handleSelectDay(day)}
-                  className={`datepicker-day ${!isCurrentMonth ? "datepicker-day-outside" : ""} ${isSelected ? "datepicker-day-selected" : ""} ${isTodayDate && !isSelected ? "datepicker-day-today" : ""} ${!isAvailable ? "datepicker-day-unavailable" : ""} ${hasItems ? "datepicker-day-has-items" : ""} ${isSelected && showTrackWhenSelected && completedRatio === 0 ? "datepicker-day-selected-track-visible" : ""}`}
-                >
-                  {hasItems ? (
-                    <svg
-                      className="datepicker-day-progress"
-                      viewBox="0 0 100 100"
-                      aria-hidden="true"
-                    >
-                      <circle
-                        className="datepicker-day-progress-track"
-                        cx="50"
-                        cy="50"
-                        r={DAY_PROGRESS_RADIUS}
-                      />
-                      {completedRatio >= 1 ? (
-                        <circle
-                          className={`datepicker-day-progress-value ${useTrackColorValue ? "datepicker-day-progress-value-track-tone" : ""}`}
-                          cx="50"
-                          cy="50"
-                          r={DAY_PROGRESS_RADIUS}
-                        />
-                      ) : completedRatio > 0 ? (
-                        <path
-                          className={`datepicker-day-progress-value ${useTrackColorValue ? "datepicker-day-progress-value-track-tone" : ""}`}
-                          d={progressArc}
-                        />
-                      ) : null}
-                    </svg>
-                  ) : null}
-                  {format(day, "d")}
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="datepicker-actions">
-            {hasRestrictedDates ? (
-              <button
-                type="button"
-                className="datepicker-action-btn"
-                onClick={handleOldest}
-                disabled={!oldestDateStr}
-              >
-                {oldestDateLabel}
-              </button>
-            ) : <span />}
-            <button
-              type="button"
-              className="datepicker-action-btn"
-              onClick={handleToday}
-            >
-              Today
-            </button>
-          </div>
-        </div>
+        <DatePickerPopupContent
+          selectedDate={selectedDate}
+          onChange={(date) => {
+            onChange(date);
+            setIsOpen(false);
+          }}
+          displayDates={displayDates}
+          dateProgress={dateProgress}
+          viewDate={viewDate}
+          onViewDateChange={setViewDate}
+        />
       ) : null}
     </div>
   );

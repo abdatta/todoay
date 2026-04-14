@@ -38,8 +38,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <Script
           id="theme-init"
           strategy="beforeInteractive"
-          dangerouslySetInnerHTML={{
-            __html: `(() => {
+        >{`(() => {
   try {
     const raw = window.localStorage.getItem("todoay-state-v1");
     const parsed = raw ? JSON.parse(raw) : null;
@@ -52,9 +51,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     document.documentElement.dataset.theme = "dark";
     document.documentElement.style.colorScheme = "dark";
   }
-})();`,
-          }}
-        />
+})();`}</Script>
         <TodoayProvider>
           <ServiceWorkerRegistration
             basePath={process.env.PAGES_BASE_PATH || ""}

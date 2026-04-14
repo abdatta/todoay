@@ -16,6 +16,18 @@ export default function ServiceWorkerRegistration({
       return;
     }
 
+    const isLocalhost = ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
+    const shouldDisableServiceWorker = version === "dev" || isLocalhost;
+
+    if (shouldDisableServiceWorker) {
+      navigator.serviceWorker.getRegistrations()
+        .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
+        .catch((error: unknown) => {
+          console.error("Service worker cleanup failed", error);
+        });
+      return;
+    }
+
     const swUrl = `${basePath}/sw.js?v=${encodeURIComponent(version)}`;
     let hasRefreshed = false;
 

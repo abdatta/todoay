@@ -45,6 +45,10 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  if (url.pathname.startsWith(`${basePath}/_next/`) || url.pathname.includes("/_next/")) {
+    return;
+  }
+
   if (request.mode === "navigate") {
     event.respondWith(fetch(request).catch(() => caches.match(`${basePath}/tasks/`)));
     return;

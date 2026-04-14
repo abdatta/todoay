@@ -365,9 +365,9 @@ input {
   height: 20px;
   border-radius: 6px;
   border: 2px solid var(--text-muted);
-  margin-top: 4px;
   position: relative;
   background: transparent;
+  align-self: center;
 }
 
 .todo-checkbox:disabled {
@@ -491,6 +491,39 @@ input {
 .datepicker-popup:hover {
   transform: translate(-50%, -4px);
   box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.05), var(--glass-shadow);
+}
+
+.datepicker-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.datepicker-modal-title {
+  font-family: var(--font-heading);
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.datepicker-modal-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  color: var(--text-muted);
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--border-subtle);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.datepicker-modal-close:hover {
+  color: var(--text-main);
+  border-color: rgba(255, 140, 122, 0.28);
 }
 
 .datepicker-header {
@@ -658,8 +691,8 @@ input {
   grid-template-columns: auto 1fr auto;
   gap: 12px;
   align-items: center;
-  min-height: 52px;
-  padding: 0 20px;
+  min-height: 60px;
+  padding: 4px 20px;
   position: relative;
 }
 
@@ -680,10 +713,15 @@ input {
   width: 100%;
   min-width: 0;
   min-height: 52px;
+  padding: 12px 0;
   color: var(--text-main);
   background: transparent;
   border: none;
   font-size: 1.02rem;
+  line-height: 1.45;
+  resize: none;
+  overflow: hidden;
+  field-sizing: content;
 }
 
 .task-text-input.completed {
@@ -700,6 +738,7 @@ input {
   border: none;
   opacity: 0;
   border-radius: 999px;
+  align-self: center;
 }
 
 .task-line-action:hover {
@@ -750,6 +789,28 @@ input {
 
 .task-line-menu-item.danger {
   color: #ff9f95;
+}
+
+.task-action-datepicker-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(10, 10, 10, 0.36);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.task-action-datepicker-popup {
+  position: relative;
+  width: min(340px, calc(100vw - 32px));
+  transform: none;
+}
+
+.task-action-datepicker-popup:hover {
+  transform: translateY(-4px);
 }
 
 .task-line-menu-meta {
@@ -1087,5 +1148,14 @@ input {
 
   .datepicker-popup:hover {
     transform: translate(-50%, 0);
+  }
+
+  .task-action-datepicker-popup {
+    width: min(340px, calc(100vw - 24px));
+    transform: none;
+  }
+
+  .task-action-datepicker-popup:hover {
+    transform: none;
   }
 }
