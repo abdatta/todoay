@@ -4,6 +4,7 @@ import "./globals.css";
 import { TodoayProvider } from "@/lib/store";
 import Navigation from "@/components/Navigation";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
+import { THEME_BACKGROUND } from "@/lib/theme";
 
 export const metadata: Metadata = {
   title: "Todoay",
@@ -25,8 +26,8 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f5efe6" },
-    { media: "(prefers-color-scheme: dark)", color: "#111110" },
+    { media: "(prefers-color-scheme: light)", color: THEME_BACKGROUND.light },
+    { media: "(prefers-color-scheme: dark)", color: THEME_BACKGROUND.dark },
   ],
   viewportFit: "cover",
 };
@@ -45,11 +46,24 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     const themeMode = parsed?.themeMode ?? "system";
     const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
     const resolvedTheme = themeMode === "system" ? systemTheme : themeMode;
+    const themeColor = resolvedTheme === "dark" ? "${THEME_BACKGROUND.dark}" : "${THEME_BACKGROUND.light}";
     document.documentElement.dataset.theme = resolvedTheme;
     document.documentElement.style.colorScheme = resolvedTheme;
+    const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+    if (themeColorMeta) {
+      themeColorMeta.setAttribute("content", themeColor);
+    }
+    const appleStatusBarMeta = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+    if (appleStatusBarMeta) {
+      appleStatusBarMeta.setAttribute("content", resolvedTheme === "dark" ? "black-translucent" : "default");
+    }
   } catch {
     document.documentElement.dataset.theme = "dark";
     document.documentElement.style.colorScheme = "dark";
+    const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+    if (themeColorMeta) {
+      themeColorMeta.setAttribute("content", "${THEME_BACKGROUND.dark}");
+    }
   }
 })();`}</Script>
         <TodoayProvider>

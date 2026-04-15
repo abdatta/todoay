@@ -17,6 +17,7 @@ import type {
   UndatedChecklistItem,
   UndatedEntry,
 } from "@/lib/types";
+import { applyThemeChrome } from "@/lib/theme";
 
 const STORAGE_KEY = "todoay-state-v1";
 
@@ -119,8 +120,7 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
   const resolvedTheme = state.themeMode === "system" ? systemTheme : state.themeMode;
 
   useEffect(() => {
-    document.documentElement.dataset.theme = resolvedTheme;
-    document.documentElement.style.colorScheme = resolvedTheme;
+    applyThemeChrome(resolvedTheme);
   }, [resolvedTheme]);
 
   const addTodo = useCallback<StoreValue["addTodo"]>((date) => {

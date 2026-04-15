@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import TasksPage from "@/components/TasksPage";
 
 export default function HomePage() {
-  redirect("/tasks");
+  return <TasksPage />;
 }

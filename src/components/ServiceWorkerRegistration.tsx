@@ -30,9 +30,10 @@ export default function ServiceWorkerRegistration({
 
     const swUrl = `${basePath}/sw.js?v=${encodeURIComponent(version)}`;
     let hasRefreshed = false;
+    const hadController = Boolean(navigator.serviceWorker.controller);
 
     const reloadForUpdate = () => {
-      if (hasRefreshed) {
+      if (hasRefreshed || !hadController) {
         return;
       }
 
@@ -40,18 +41,33 @@ export default function ServiceWorkerRegistration({
       window.location.reload();
     };
 
-    navigator.serviceWorker.addEventListener("controllerchange", reloadForUpdate);
+    const watchWorker = (worker: ServiceWorker | null) => {
+      if (!worker) {
+        return;
+      }
+
+      worker.addEventListener("statechange", () => {
+        if (worker.state === "installed" && navigator.serviceWorker.controller) {
+          reloadForUpdate();
+        }
+      });
+    };
 
     navigator.serviceWorker
       .register(swUrl, { updateViaCache: "none" })
-      .then((registration) => registration.update())
+      .then((registration) => {
+        watchWorker(registration.installing);
+        watchWorker(registration.waiting);
+
+        registration.addEventListener("updatefound", () => {
+          watchWorker(registration.installing);
+        });
+
+        return registration.update();
+      })
       .catch((error: unknown) => {
         console.error("Service worker registration failed", error);
       });
-
-    return () => {
-      navigator.serviceWorker.removeEventListener("controllerchange", reloadForUpdate);
-    };
   }, [basePath, version]);
 
   return null;

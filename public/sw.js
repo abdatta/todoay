@@ -50,7 +50,7 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (request.mode === "navigate") {
-    event.respondWith(fetch(request).catch(() => caches.match(`${basePath}/tasks/`)));
+    event.respondWith(fetch(request).catch(() => caches.match(`${basePath}/`)));
     return;
   }
 
@@ -61,6 +61,10 @@ self.addEventListener("fetch", (event) => {
       }
 
       return fetch(request).then((networkResponse) => {
+        if (!networkResponse.ok || networkResponse.type !== "basic") {
+          return networkResponse;
+        }
+
         const responseToCache = networkResponse.clone();
 
         caches.open(CACHE_NAME).then((cache) => cache.put(request, responseToCache));
