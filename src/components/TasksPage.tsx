@@ -66,7 +66,18 @@ function TasksScreen() {
   const completedListRef = useRef<HTMLDivElement | null>(null);
   const longPressRef = useRef<{ todoId: string; pointerId: number; timeoutId: number | null; startX: number; startY: number } | null>(null);
   const suppressClickRef = useRef<string | null>(null);
-  const { ready, state, addTodo, updateTodo, deleteTodo, reorderTodo, copyTodoReferenceToDate, moveTodoReferenceToDate, getVisibleTodos } = useTodoay();
+  const {
+    ready,
+    state,
+    addTodo,
+    updateTodo,
+    deleteTodo,
+    reorderTodo,
+    copyTodoToDate,
+    copyTodoReferenceToDate,
+    moveTodoReferenceToDate,
+    getVisibleTodos,
+  } = useTodoay();
 
   const visibleTodos = useMemo(() => getVisibleTodos(selectedDate, today), [getVisibleTodos, selectedDate, today]);
   const openTodos = visibleTodos.filter((item) => !item.completed);
@@ -134,7 +145,7 @@ function TasksScreen() {
       return;
     }
 
-    let closestTodo: TodoItem | null = null;
+    let closestTodoId: string | null = null;
     let closestPlacement: "before" | "after" = "before";
     let closestDistance = Number.POSITIVE_INFINITY;
 
@@ -150,16 +161,16 @@ function TasksScreen() {
 
       if (distance < closestDistance) {
         closestDistance = distance;
-        closestTodo = candidate;
+        closestTodoId = candidate.id;
         closestPlacement = clientY < midpoint ? "before" : "after";
       }
     });
 
-    if (!closestTodo) {
+    if (!closestTodoId) {
       return;
     }
 
-    reorderTodo(selectedDate, todoId, closestTodo.id, closestPlacement);
+    reorderTodo(selectedDate, todoId, closestTodoId, closestPlacement);
   }, [completedTodos, openTodos, reorderTodo, selectedDate]);
 
   useEffect(() => {
@@ -205,7 +216,11 @@ function TasksScreen() {
 
   const handleDateAction = (todo: TodoItem, mode: MenuDateAction["mode"], targetDate: string) => {
     if (mode === "copy") {
-      copyTodoReferenceToDate(todo.sourceDate, todo.id, targetDate);
+      if (state.copyToBehavior === "value") {
+        copyTodoToDate(todo.sourceDate, todo.id, targetDate);
+      } else {
+        copyTodoReferenceToDate(todo.sourceDate, todo.id, targetDate);
+      }
     } else {
       moveTodoReferenceToDate(todo.sourceDate, todo.id, targetDate);
     }

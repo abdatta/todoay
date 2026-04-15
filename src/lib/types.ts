@@ -34,10 +34,13 @@ export type UndatedEntry = {
 
 export type ThemeMode = "dark" | "light" | "system";
 
+export type CopyToBehavior = "reference" | "value";
+
 export type TodoayState = {
   todosByDate: Record<string, TodoItem[]>;
   noteIdsByDate: Record<string, string[]>;
   noteDocs: Record<string, NoteDocument>;
   undatedEntries: UndatedEntry[];
   themeMode: ThemeMode;
+  copyToBehavior: CopyToBehavior;
 };

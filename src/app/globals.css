@@ -697,7 +697,7 @@ input {
   gap: 12px;
   align-items: center;
   min-height: 60px;
-  padding: 4px 20px;
+  padding: 0px 20px;
   position: relative;
   transition:
     transform 0.18s ease,
@@ -706,7 +706,8 @@ input {
     opacity 0.18s ease;
 }
 
-.task-line + .task-line {
+.task-line-slot + .task-line-slot .task-line,
+.task-line-slot + .task-line-slot.dragging + .task-line-slot .task-line {
   border-top: 1px solid rgba(255, 255, 255, 0.05);
 }
 
@@ -983,6 +984,13 @@ input {
   gap: 16px;
 }
 
+.settings-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
 .settings-row-label {
   display: inline-flex;
   align-items: center;
@@ -992,6 +1000,18 @@ input {
   font-size: 1rem;
   font-weight: 600;
   color: var(--text-main);
+}
+
+.settings-row-description {
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.settings-divider {
+  height: 1px;
+  margin: 16px 0;
+  background: color-mix(in srgb, var(--border-subtle) 85%, transparent);
 }
 
 .settings-select {
@@ -1069,8 +1089,54 @@ input {
   background: color-mix(in srgb, var(--accent-soft) 88%, transparent);
 }
 
+.settings-switch {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 65%, transparent);
+  background: rgba(255, 255, 255, 0.04);
+  transition: var(--transition-smooth);
+}
+
+.settings-switch:hover,
+.settings-switch:focus-visible {
+  border-color: color-mix(in srgb, var(--accent-color) 40%, var(--border-subtle));
+  outline: none;
+}
+
+.settings-switch-track {
+  width: 48px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  transition: var(--transition-smooth);
+}
+
+.settings-switch-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 8px 16px -12px rgba(0, 0, 0, 0.5);
+  transition: transform 0.22s ease;
+}
+
+.settings-switch.on .settings-switch-track {
+  background: color-mix(in srgb, var(--accent-color) 82%, white 18%);
+}
+
+.settings-switch.on .settings-switch-thumb {
+  transform: translateX(20px);
+}
+
 @media (max-width: 520px) {
   .settings-row {
+    align-items: flex-start;
     gap: 12px;
   }
 

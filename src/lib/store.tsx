@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import type {
+  CopyToBehavior,
   NoteDocument,
   TodoItem,
   TodoayState,
@@ -34,6 +35,7 @@ const createInitialState = (): TodoayState => ({
   noteDocs: {},
   undatedEntries: [],
   themeMode: "system",
+  copyToBehavior: "reference",
 });
 
 type StoreValue = {
@@ -41,6 +43,7 @@ type StoreValue = {
   state: TodoayState;
   resolvedTheme: Exclude<ThemeMode, "system">;
   setThemeMode: (themeMode: ThemeMode) => void;
+  setCopyToBehavior: (copyToBehavior: CopyToBehavior) => void;
   addTodo: (date: string) => string;
   updateTodo: (date: string, todoId: string, patch: Partial<TodoItem>) => void;
   deleteTodo: (date: string, todoId: string) => void;
@@ -152,6 +155,9 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
     resolvedTheme,
     setThemeMode(themeMode) {
       setState((current) => ({ ...current, themeMode }));
+    },
+    setCopyToBehavior(copyToBehavior) {
+      setState((current) => ({ ...current, copyToBehavior }));
     },
     addTodo,
     updateTodo(date, todoId, patch) {
