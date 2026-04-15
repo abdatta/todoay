@@ -428,6 +428,7 @@ input {
 }
 
 .task-list-card {
+  position: relative;
   padding: 18px 0 8px;
   overflow: visible;
 }
@@ -686,6 +687,10 @@ input {
   flex-direction: column;
 }
 
+.task-line-slot {
+  position: relative;
+}
+
 .task-line {
   display: grid;
   grid-template-columns: auto 1fr auto;
@@ -694,6 +699,11 @@ input {
   min-height: 60px;
   padding: 4px 20px;
   position: relative;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    background-color 0.18s ease,
+    opacity 0.18s ease;
 }
 
 .task-line + .task-line {
@@ -704,9 +714,21 @@ input {
   opacity: 0.72;
 }
 
-.task-line:hover .task-line-action,
-.task-line:focus-within .task-line-action {
+.task-line.dragging {
+  z-index: 15;
   opacity: 1;
+  background: var(--card-bg);
+  box-shadow:
+    0 18px 34px -22px rgba(0, 0, 0, 0.5),
+    0 0 0 1px color-mix(in srgb, var(--accent-color) 18%, transparent),
+    0 0 20px -12px color-mix(in srgb, var(--accent-color) 42%, transparent);
+  border-radius: 16px;
+}
+
+.task-drag-overlay {
+  position: absolute;
+  z-index: 30;
+  pointer-events: none;
 }
 
 .task-text-input {
@@ -730,20 +752,47 @@ input {
 }
 
 .task-line-action {
-  width: auto;
-  height: auto;
-  padding: 6px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
   color: var(--text-muted);
-  background: transparent;
-  border: none;
-  opacity: 0;
-  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid transparent;
+  opacity: 0.82;
+  border-radius: 10px;
   align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  touch-action: none;
+  transition:
+    var(--transition-smooth),
+    transform 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+.task-line.dragging .task-line-action {
+  cursor: grabbing;
 }
 
 .task-line-action:hover {
   color: var(--text-main);
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.06);
+  border-color: color-mix(in srgb, var(--accent-color) 24%, transparent);
+}
+
+.task-line:hover .task-line-action,
+.task-line:focus-within .task-line-action {
+  opacity: 1;
+}
+
+.task-line-action:active {
+  transform: scale(0.96);
+}
+
+.task-line-action:disabled {
+  opacity: 1;
 }
 
 .task-line-menu {

@@ -44,6 +44,7 @@ type StoreValue = {
   addTodo: (date: string) => string;
   updateTodo: (date: string, todoId: string, patch: Partial<TodoItem>) => void;
   deleteTodo: (date: string, todoId: string) => void;
+  reorderTodo: (date: string, todoId: string, targetTodoId: string, placement: "before" | "after") => void;
   copyTodoToDate: (fromDate: string, todoId: string, toDate: string) => void;
   copyTodoReferenceToDate: (fromDate: string, todoId: string, toDate: string) => void;
   moveTodoReferenceToDate: (fromDate: string, todoId: string, toDate: string) => void;
@@ -194,6 +195,50 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
           [date]: (current.todosByDate[date] ?? []).filter((todo) => todo.id !== todoId),
         },
       }));
+    },
+    reorderTodo(date, todoId, targetTodoId, placement) {
+      setState((current) => {
+        const items = current.todosByDate[date] ?? [];
+        const sourceTodo = items.find((todo) => todo.id === todoId);
+        const targetTodo = items.find((todo) => todo.id === targetTodoId);
+
+        if (!sourceTodo || !targetTodo || sourceTodo.id === targetTodo.id || sourceTodo.completed !== targetTodo.completed) {
+          return current;
+        }
+
+        const group = items.filter((todo) => todo.completed === sourceTodo.completed);
+        const movingIndex = group.findIndex((todo) => todo.id === todoId);
+        const rawTargetIndex = group.findIndex((todo) => todo.id === targetTodoId);
+
+        if (movingIndex === -1 || rawTargetIndex === -1) {
+          return current;
+        }
+
+        const nextGroup = [...group];
+        const [movingTodo] = nextGroup.splice(movingIndex, 1);
+        let targetIndex = rawTargetIndex;
+
+        if (movingIndex < rawTargetIndex) {
+          targetIndex -= 1;
+        }
+
+        if (placement === "after") {
+          targetIndex += 1;
+        }
+
+        nextGroup.splice(targetIndex, 0, movingTodo);
+
+        const nextOpen = sourceTodo.completed ? items.filter((todo) => !todo.completed) : nextGroup;
+        const nextCompleted = sourceTodo.completed ? nextGroup : items.filter((todo) => todo.completed);
+
+        return {
+          ...current,
+          todosByDate: {
+            ...current.todosByDate,
+            [date]: [...nextOpen, ...nextCompleted],
+          },
+        };
+      });
     },
     copyTodoToDate(fromDate, todoId, toDate) {
       setState((current) => {
