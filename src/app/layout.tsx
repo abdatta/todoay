@@ -6,10 +6,12 @@ import Navigation from "@/components/Navigation";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 import { THEME_BACKGROUND } from "@/lib/theme";
 
+const pagesBasePath = process.env.PAGES_BASE_PATH || "";
+
 export const metadata: Metadata = {
   title: "Todoay",
   description: "A local-first app for tasks, notes, misc lists, and lightweight settings.",
-  manifest: "/manifest.webmanifest",
+  manifest: `${pagesBasePath}/manifest.webmanifest`,
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
@@ -17,10 +19,10 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [
-      { url: "/icons/favicon-32.png", sizes: "32x32", type: "image/png" },
-      { url: "/icons/favicon-16.png", sizes: "16x16", type: "image/png" },
+      { url: `${pagesBasePath}/icons/favicon-32.png`, sizes: "32x32", type: "image/png" },
+      { url: `${pagesBasePath}/icons/favicon-16.png`, sizes: "16x16", type: "image/png" },
     ],
-    apple: "/icons/apple-touch-icon.png",
+    apple: `${pagesBasePath}/icons/apple-touch-icon.png`,
   },
 };
 
@@ -68,7 +70,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
 })();`}</Script>
         <TodoayProvider>
           <ServiceWorkerRegistration
-            basePath={process.env.PAGES_BASE_PATH || ""}
+            basePath={pagesBasePath}
             version={process.env.NEXT_PUBLIC_APP_VERSION || "dev"}
           />
           <Navigation />
