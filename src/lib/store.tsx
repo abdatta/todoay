@@ -11,8 +11,11 @@ import {
 } from "react";
 import type {
   CopyToBehavior,
+  ImportConflict,
+  ImportConflictResolution,
   NoteDocument,
   TodoItem,
+  TodoayExportData,
   TodoayState,
   ThemeMode,
   UndatedChecklistItem,
@@ -38,12 +41,259 @@ const createInitialState = (): TodoayState => ({
   copyToBehavior: "reference",
 });
 
+const normalizeState = (input?: Partial<TodoayState>): TodoayState => {
+  const parsed = { ...createInitialState(), ...(input ?? {}) };
+  const todosByDate = Object.fromEntries(
+    Object.entries(parsed.todosByDate ?? {}).map(([date, items]) => [
+      date,
+      (items ?? []).map((todo) => ({
+        ...todo,
+        referenceId: todo.referenceId ?? todo.id,
+      })),
+    ]),
+  );
+
+  return {
+    ...parsed,
+    todosByDate,
+    noteIdsByDate: parsed.noteIdsByDate ?? {},
+    noteDocs: parsed.noteDocs ?? {},
+    undatedEntries: parsed.undatedEntries ?? [],
+  };
+};
+
+const isSameTodo = (left: TodoItem, right: TodoItem) =>
+  left.id === right.id &&
+  left.referenceId === right.referenceId &&
+  left.text === right.text &&
+  left.completed === right.completed &&
+  left.pinned === right.pinned &&
+  left.createdAt === right.createdAt &&
+  left.sourceDate === right.sourceDate &&
+  left.copiedFromDate === right.copiedFromDate;
+
+const isSameNote = (left: NoteDocument, right: NoteDocument) =>
+  left.id === right.id &&
+  left.title === right.title &&
+  left.content === right.content &&
+  left.pinned === right.pinned &&
+  left.createdAt === right.createdAt &&
+  left.updatedAt === right.updatedAt;
+
+const cloneTodoForImport = (todo: TodoItem, overrideDate?: string): TodoItem => ({
+  ...todo,
+  id: createId(),
+  referenceId: createId(),
+  sourceDate: overrideDate ?? todo.sourceDate,
+});
+
+const cloneNoteForImport = (note: NoteDocument): NoteDocument => ({
+  ...note,
+  id: createId(),
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+});
+
+const applyImportToState = (
+  current: TodoayState,
+  incoming: TodoayExportData,
+  resolutions: Record<string, ImportConflictResolution>,
+) => {
+  const next = normalizeState(current);
+  const normalizedIncoming = normalizeState({
+    todosByDate: incoming.tasks,
+    noteIdsByDate: incoming.noteIdsByDate,
+    noteDocs: incoming.noteDocs,
+    undatedEntries: incoming.undatedEntries,
+    themeMode: current.themeMode,
+    copyToBehavior: current.copyToBehavior,
+  });
+
+  const todoDates = new Set([
+    ...Object.keys(next.todosByDate),
+    ...Object.keys(normalizedIncoming.todosByDate),
+  ]);
+
+  todoDates.forEach((date) => {
+    const localItems = [...(next.todosByDate[date] ?? [])];
+    const incomingItems = normalizedIncoming.todosByDate[date] ?? [];
+
+    incomingItems.forEach((incomingTodo) => {
+      const sameTodoIndex = localItems.findIndex((item) => isSameTodo(item, incomingTodo));
+      if (sameTodoIndex !== -1) {
+        return;
+      }
+
+      const conflictIndex = localItems.findIndex((item) => item.id === incomingTodo.id);
+      if (conflictIndex === -1) {
+        localItems.push(incomingTodo);
+        return;
+      }
+
+      const resolution = resolutions[`todo:${date}:${incomingTodo.id}`] ?? "existing";
+      if (resolution === "incoming") {
+        localItems[conflictIndex] = incomingTodo;
+      } else if (resolution === "both") {
+        localItems.push(cloneTodoForImport(incomingTodo, date));
+      }
+    });
+
+    next.todosByDate[date] = localItems;
+  });
+
+  const allIncomingNoteIds = new Set(Object.keys(normalizedIncoming.noteDocs));
+  const noteDatesById = new Map<string, Set<string>>();
+
+  Object.entries(next.noteIdsByDate).forEach(([date, ids]) => {
+    ids.forEach((id) => {
+      const dates = noteDatesById.get(id) ?? new Set<string>();
+      dates.add(date);
+      noteDatesById.set(id, dates);
+    });
+  });
+
+  Object.entries(normalizedIncoming.noteIdsByDate).forEach(([date, ids]) => {
+    ids.forEach((id) => {
+      const dates = noteDatesById.get(id) ?? new Set<string>();
+      dates.add(date);
+      noteDatesById.set(id, dates);
+      allIncomingNoteIds.add(id);
+    });
+  });
+
+  allIncomingNoteIds.forEach((noteId) => {
+    const incomingDoc = normalizedIncoming.noteDocs[noteId];
+    if (!incomingDoc) {
+      return;
+    }
+
+    const localDoc = next.noteDocs[noteId];
+    const targetDates = Array.from(noteDatesById.get(noteId) ?? []);
+
+    if (!localDoc) {
+      next.noteDocs[noteId] = incomingDoc;
+      targetDates.forEach((date) => {
+        const existingIds = next.noteIdsByDate[date] ?? [];
+        next.noteIdsByDate[date] = existingIds.includes(noteId) ? existingIds : [...existingIds, noteId];
+      });
+      return;
+    }
+
+    if (isSameNote(localDoc, incomingDoc)) {
+      targetDates.forEach((date) => {
+        const existingIds = next.noteIdsByDate[date] ?? [];
+        next.noteIdsByDate[date] = existingIds.includes(noteId) ? existingIds : [...existingIds, noteId];
+      });
+      return;
+    }
+
+    const resolution = resolutions[`note:${noteId}`] ?? "existing";
+    if (resolution === "incoming") {
+      next.noteDocs[noteId] = incomingDoc;
+      targetDates.forEach((date) => {
+        const existingIds = next.noteIdsByDate[date] ?? [];
+        next.noteIdsByDate[date] = existingIds.includes(noteId) ? existingIds : [...existingIds, noteId];
+      });
+      return;
+    }
+
+    if (resolution === "both") {
+      const clonedNote = cloneNoteForImport(incomingDoc);
+      next.noteDocs[clonedNote.id] = clonedNote;
+      targetDates.forEach((date) => {
+        const importedIds = normalizedIncoming.noteIdsByDate[date] ?? [];
+        const existingIds = next.noteIdsByDate[date] ?? [];
+        if (importedIds.includes(noteId) && !existingIds.includes(clonedNote.id)) {
+          next.noteIdsByDate[date] = [...existingIds, clonedNote.id];
+        }
+      });
+    } else {
+      targetDates.forEach((date) => {
+        const existingIds = next.noteIdsByDate[date] ?? [];
+        next.noteIdsByDate[date] = existingIds.includes(noteId) ? existingIds : [...existingIds, noteId];
+      });
+    }
+  });
+
+  const existingUndatedKeys = new Set(next.undatedEntries.map((entry) => `${entry.type}:${entry.title}:${entry.text}`));
+  normalizedIncoming.undatedEntries.forEach((entry) => {
+    const key = `${entry.type}:${entry.title}:${entry.text}`;
+    if (!existingUndatedKeys.has(key)) {
+      next.undatedEntries.push({
+        ...entry,
+        id: createId(),
+        items: entry.items.map((item) => ({ ...item, id: createId() })),
+      });
+      existingUndatedKeys.add(key);
+    }
+  });
+
+  return next;
+};
+
+const buildImportConflicts = (current: TodoayState, incoming: TodoayExportData): ImportConflict[] => {
+  const normalizedCurrent = normalizeState(current);
+  const normalizedIncoming = normalizeState({
+    todosByDate: incoming.tasks,
+    noteIdsByDate: incoming.noteIdsByDate,
+    noteDocs: incoming.noteDocs,
+    undatedEntries: incoming.undatedEntries,
+    themeMode: current.themeMode,
+    copyToBehavior: current.copyToBehavior,
+  });
+
+  const conflicts: ImportConflict[] = [];
+
+  Object.entries(normalizedIncoming.todosByDate).forEach(([date, items]) => {
+    const localItems = normalizedCurrent.todosByDate[date] ?? [];
+    items.forEach((incomingTodo) => {
+      const existing = localItems.find((item) => item.id === incomingTodo.id);
+      if (existing && !isSameTodo(existing, incomingTodo)) {
+        conflicts.push({
+          kind: "todo",
+          key: `todo:${date}:${incomingTodo.id}`,
+          date,
+          existing,
+          incoming: incomingTodo,
+        });
+      }
+    });
+  });
+
+  Object.entries(normalizedIncoming.noteDocs).forEach(([noteId, incomingNote]) => {
+    const existing = normalizedCurrent.noteDocs[noteId];
+    if (!existing || isSameNote(existing, incomingNote)) {
+      return;
+    }
+
+    const dates = Object.entries(normalizedIncoming.noteIdsByDate)
+      .filter(([, ids]) => ids.includes(noteId))
+      .map(([date]) => date);
+
+    conflicts.push({
+      kind: "note",
+      key: `note:${noteId}`,
+      existing,
+      incoming: incomingNote,
+      dates,
+    });
+  });
+
+  return conflicts;
+};
+
 type StoreValue = {
   ready: boolean;
   state: TodoayState;
   resolvedTheme: Exclude<ThemeMode, "system">;
   setThemeMode: (themeMode: ThemeMode) => void;
   setCopyToBehavior: (copyToBehavior: CopyToBehavior) => void;
+  exportData: () => TodoayExportData;
+  getImportConflicts: (incoming: TodoayExportData) => ImportConflict[];
+  importData: (
+    incoming: TodoayExportData,
+    resolutions?: Record<string, ImportConflictResolution>,
+  ) => void;
   addTodo: (date: string) => string;
   updateTodo: (date: string, todoId: string, patch: Partial<TodoItem>) => void;
   deleteTodo: (date: string, todoId: string) => void;
@@ -81,17 +331,7 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (raw) {
-        const parsed = { ...createInitialState(), ...(JSON.parse(raw) as TodoayState) };
-        const todosByDate = Object.fromEntries(
-          Object.entries(parsed.todosByDate).map(([date, items]) => [
-            date,
-            items.map((todo) => ({
-              ...todo,
-              referenceId: todo.referenceId ?? todo.id,
-            })),
-          ]),
-        );
-        setState({ ...parsed, todosByDate });
+        setState(normalizeState(JSON.parse(raw) as TodoayState));
       }
     } catch (error) {
       console.error("Failed to load Todoay state", error);
@@ -158,6 +398,22 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
     },
     setCopyToBehavior(copyToBehavior) {
       setState((current) => ({ ...current, copyToBehavior }));
+    },
+    exportData() {
+      return {
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        tasks: state.todosByDate,
+        noteIdsByDate: state.noteIdsByDate,
+        noteDocs: state.noteDocs,
+        undatedEntries: state.undatedEntries,
+      };
+    },
+    getImportConflicts(incoming) {
+      return buildImportConflicts(state, incoming);
+    },
+    importData(incoming, resolutions = {}) {
+      setState((current) => applyImportToState(current, incoming, resolutions));
     },
     addTodo,
     updateTodo(date, todoId, patch) {

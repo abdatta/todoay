@@ -33,7 +33,7 @@ type DragState = {
   boundsHeight: number;
 };
 
-const LONG_PRESS_MS = 180;
+const LONG_PRESS_MS = 500;
 const LONG_PRESS_MOVE_TOLERANCE = 8;
 
 function autoResizeTextarea(element: HTMLTextAreaElement | null) {
