@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
-import { Settings, MoonStar, Copy, Download, Upload, FileWarning } from "lucide-react";
+import { Settings, MoonStar, Copy, Download, Upload, FileWarning, Cloud, LogOut } from "lucide-react";
 import ClientReady from "@/components/ClientReady";
 import PageHeader from "@/components/PageHeader";
 import { useTodoay } from "@/lib/store";
+import { formatSyncedText } from "@/lib/syncPresentation";
 import type {
   ImportConflict,
   ImportConflictResolution,
@@ -25,7 +26,7 @@ const isTodoayExportData = (value: unknown): value is TodoayExportData => {
 
   const candidate = value as Partial<TodoayExportData>;
   return (
-    candidate.version === 1 &&
+    (candidate.version === 1 || candidate.version === 2) &&
     typeof candidate.exportedAt === "string" &&
     typeof candidate.tasks === "object" &&
     candidate.tasks !== null &&
@@ -55,6 +56,9 @@ function SettingsScreen() {
     exportData,
     getImportConflicts,
     importData,
+    syncStatus,
+    signInWithGoogle,
+    signOut,
     state,
   } = useTodoay();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -102,6 +106,11 @@ function SettingsScreen() {
     const noteCount = Object.keys(pendingImport.noteDocs).length;
     return `${taskCount} task${taskCount === 1 ? "" : "s"} and ${noteCount} note${noteCount === 1 ? "" : "s"}`;
   }, [pendingImport]);
+
+  const syncInlineLabel = useMemo(() => {
+    const accountLabel = syncStatus.user?.email ?? syncStatus.user?.name ?? "Local only";
+    return `${accountLabel} · ${formatSyncedText(syncStatus.lastSyncedAt)}`;
+  }, [syncStatus]);
 
   if (!ready) {
     return <div className="loading-screen">Loading Todoay...</div>;
@@ -256,6 +265,41 @@ function SettingsScreen() {
             </span>
           </button>
         </label>
+
+        <div className="settings-divider" />
+
+        <div className="settings-row settings-row-sync">
+          <span className="settings-row-text settings-sync-copy">
+            <span className="settings-row-label">
+              <Cloud size={18} color="var(--accent-color)" />
+              <span>Google sync</span>
+            </span>
+            <span className="settings-row-description settings-sync-inline-status">
+              {syncInlineLabel}
+            </span>
+          </span>
+          <div className="settings-sync-actions">
+            {syncStatus.isAuthenticated ? (
+              <button
+                type="button"
+                className="settings-icon-action"
+                onClick={() => void signOut()}
+                aria-label="Sign out"
+                title="Sign out"
+              >
+                <LogOut size={18} />
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="primary-button settings-sync-button"
+                onClick={() => void signInWithGoogle()}
+              >
+                Sign in
+              </button>
+            )}
+          </div>
+        </div>
 
         <div className="settings-divider" />
 

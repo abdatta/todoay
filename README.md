@@ -2,6 +2,29 @@
 
 Todoay is a lightweight daily-use app for tasks, notes and misc lists built with Next.js.
 
+## Local-first sync
+
+Todoay now keeps writing to local storage first, then syncs the same state snapshot to Supabase when the user is signed in and online.
+
+### Environment
+
+Copy [.env.example](/C:/Users/iamro/Code/todoay/.env.example) to `.env.local` and fill in:
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=...
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+```
+
+### Supabase setup
+
+1. In Supabase, enable Google under `Authentication > Providers`.
+2. Add your app URL and callback URL to the allowed redirect URLs list. For local development that is usually `http://localhost:2020/settings/`.
+3. Run the SQL in [supabase/todoay_schema.sql](/C:/Users/iamro/Code/todoay/supabase/todoay_schema.sql) inside the Supabase SQL editor.
+
+That SQL also adds the snapshot table to Supabase Realtime so signed-in clients can receive cross-device updates within a few moments instead of waiting for a manual refresh.
+
+The app stores one JSON snapshot per user and merges local and remote changes using per-record timestamps, mutation ids, and deletion tombstones so cross-device sync can converge without dropping local edits.
+
 ## Development
 
 ```bash

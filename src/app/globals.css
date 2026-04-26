@@ -180,6 +180,37 @@ input {
   font-size: 0.96rem;
 }
 
+.header-sync-button {
+  color: var(--accent-color);
+  border-color: color-mix(in srgb, var(--accent-color) 26%, var(--border-subtle));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--accent-soft) 82%, transparent), rgba(255, 255, 255, 0.02));
+}
+
+.header-sync-button:hover:not(:disabled),
+.header-sync-button:focus-visible {
+  color: var(--text-main);
+  border-color: color-mix(in srgb, var(--accent-color) 46%, var(--border-subtle));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--accent-soft) 100%, transparent), rgba(255, 255, 255, 0.05));
+  outline: none;
+}
+
+.header-sync-button.syncing svg {
+  animation: spin 1s linear infinite;
+}
+
+.header-sync-button.attention {
+  color: #f5c96c;
+  border-color: rgba(245, 201, 108, 0.32);
+  background: rgba(245, 201, 108, 0.09);
+}
+
+.header-sync-button:disabled {
+  opacity: 0.88;
+  cursor: default;
+}
+
 .date-selector-container,
 .segmented-control,
 .header-actions,
@@ -1146,6 +1177,36 @@ input {
   gap: 12px;
 }
 
+.settings-sync-copy {
+  gap: 3px;
+}
+
+.settings-sync-actions,
+.settings-status-inline {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.settings-sync-actions {
+  justify-content: flex-end;
+}
+
+.settings-sync-button {
+  min-width: 100px;
+  justify-content: center;
+}
+
+.settings-row-sync {
+  align-items: center;
+}
+
+.settings-sync-inline-status {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .settings-icon-action {
   flex-shrink: 0;
   width: 46px;
@@ -1191,6 +1252,10 @@ input {
   font-size: 0.9rem;
   line-height: 1.45;
   border: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .settings-status.success {
@@ -1202,6 +1267,17 @@ input {
   color: #ffc4bc;
   background: rgba(163, 53, 40, 0.18);
   border-color: rgba(255, 132, 118, 0.22);
+}
+
+.settings-status-link {
+  color: inherit;
+  font-size: 0.84rem;
+  font-weight: 600;
+  opacity: 0.8;
+}
+
+.settings-status-link:hover {
+  opacity: 1;
 }
 
 .settings-modal-overlay {
@@ -1224,6 +1300,11 @@ input {
   gap: 18px;
   overflow: hidden;
   padding: 22px;
+}
+
+.app-sync-modal {
+  width: min(560px, calc(100vw - 32px));
+  max-height: none;
 }
 
 .settings-modal-header,
@@ -1337,8 +1418,14 @@ input {
     justify-content: flex-end;
   }
 
+  .settings-sync-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
   .settings-row-stack > .settings-icon-action,
-  .settings-row-stack > .settings-import-actions {
+  .settings-row-stack > .settings-import-actions,
+  .settings-row-stack > .settings-sync-actions {
     position: absolute;
     top: 0;
     right: 0;
@@ -1350,6 +1437,11 @@ input {
 
   .settings-row-stack > .settings-import-actions {
     width: auto;
+  }
+
+  .settings-row-stack > .settings-sync-actions {
+    position: static;
+    margin-top: 12px;
   }
 
   .settings-conflict-columns {
@@ -1415,6 +1507,15 @@ input {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
   }
 }
 

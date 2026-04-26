@@ -43,7 +43,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           strategy="beforeInteractive"
         >{`(() => {
   try {
-    const raw = window.localStorage.getItem("todoay-state-v1");
+    const raw = window.localStorage.getItem("todoay-state-v2") ?? window.localStorage.getItem("todoay-state-v1");
     const parsed = raw ? JSON.parse(raw) : null;
     const themeMode = parsed?.themeMode ?? "system";
     const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
