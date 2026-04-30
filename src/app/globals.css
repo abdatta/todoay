@@ -181,6 +181,7 @@ input {
 }
 
 .header-sync-button {
+  position: relative;
   color: var(--accent-color);
   border-color: color-mix(in srgb, var(--accent-color) 26%, var(--border-subtle));
   background:
@@ -196,14 +197,51 @@ input {
   outline: none;
 }
 
-.header-sync-button.syncing svg {
+.header-sync-button.syncing > svg {
   animation: spin 1s linear infinite;
+}
+
+.header-sync-button.pending {
+  color: #d7a965;
+  border-color: rgba(215, 169, 101, 0.36);
+  background:
+    linear-gradient(180deg, rgba(151, 111, 58, 0.18), rgba(255, 255, 255, 0.02));
+}
+
+.header-sync-pending-badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: #fff3cf;
+  background: #9f6d2e;
+  border: 1px solid color-mix(in srgb, var(--nav-bg) 86%, white);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.28);
 }
 
 .header-sync-button.attention {
   color: #f5c96c;
   border-color: rgba(245, 201, 108, 0.32);
   background: rgba(245, 201, 108, 0.09);
+}
+
+:root[data-theme="light"] .header-sync-button.pending {
+  color: #a66e2d;
+  border-color: rgba(166, 110, 45, 0.28);
+  background:
+    linear-gradient(180deg, rgba(181, 126, 59, 0.14), rgba(255, 255, 255, 0.2));
+}
+
+:root[data-theme="light"] .header-sync-pending-badge {
+  color: #fff8e5;
+  background: #b27935;
+  border-color: color-mix(in srgb, var(--nav-bg) 88%, white);
+  box-shadow: 0 5px 12px rgba(110, 76, 38, 0.22);
 }
 
 .header-sync-button:disabled {
@@ -724,7 +762,7 @@ input {
 
 .task-line {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto 1fr auto auto;
   gap: 12px;
   align-items: center;
   min-height: 60px;
@@ -783,6 +821,92 @@ input {
   text-decoration: line-through;
 }
 
+.task-duration-chip {
+  width: 44px;
+  height: 30px;
+  align-self: center;
+  border: 1px solid var(--duration-border, rgba(255, 255, 255, 0.08));
+  border-radius: 999px;
+  background: var(--duration-bg, rgba(255, 255, 255, 0.04));
+  color: var(--duration-text, var(--text-muted));
+  text-align: center;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1;
+  transition: var(--transition-smooth);
+}
+
+.task-duration-chip::placeholder {
+  color: color-mix(in srgb, var(--text-muted) 72%, transparent);
+  font-weight: 600;
+}
+
+.task-duration-chip:hover,
+.task-duration-chip:focus {
+  border-color: color-mix(in srgb, var(--duration-text, var(--accent-color)) 52%, var(--border-subtle));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--duration-bg, var(--accent-soft)) 70%, transparent);
+}
+
+.task-duration-chip.tone-empty {
+  --duration-bg: rgba(255, 255, 255, 0.035);
+  --duration-border: color-mix(in srgb, var(--border-subtle) 80%, transparent);
+  --duration-text: var(--text-muted);
+}
+
+.task-duration-chip.tone-quick {
+  --duration-bg: #4fbd8338;
+  --duration-border: #66ffa842;
+  --duration-text: #60bb6e;
+}
+
+.task-duration-chip.tone-medium {
+  --duration-bg: rgba(153, 126, 76, 0.25);
+  --duration-border: rgba(180, 149, 92, 0.3);
+  --duration-text: #d0b47e;
+}
+
+.task-duration-chip.tone-deep {
+  --duration-bg: #b95a3240;
+  --duration-border: #ff97664d;
+  --duration-text: #ff905e;
+}
+
+.task-duration-chip.tone-long {
+  --duration-bg: #974f4c42;
+  --duration-border: #ff4a3f52;
+  --duration-text: #ff4a3c;
+}
+
+:root[data-theme="light"] .task-duration-chip.tone-empty {
+  --duration-bg: rgba(116, 93, 73, 0.06);
+  --duration-border: rgba(116, 93, 73, 0.12);
+  --duration-text: #8d7d70;
+}
+
+:root[data-theme="light"] .task-duration-chip.tone-quick {
+  --duration-bg: rgba(113, 145, 121, 0.2);
+  --duration-border: rgba(91, 126, 99, 0.24);
+  --duration-text: #5b7962;
+}
+
+:root[data-theme="light"] .task-duration-chip.tone-medium {
+  --duration-bg: rgba(179, 145, 79, 0.22);
+  --duration-border: rgba(151, 121, 66, 0.25);
+  --duration-text: #8a6e3c;
+}
+
+:root[data-theme="light"] .task-duration-chip.tone-deep {
+  --duration-bg: rgba(182, 112, 78, 0.21);
+  --duration-border: rgba(154, 93, 65, 0.25);
+  --duration-text: #925840;
+}
+
+:root[data-theme="light"] .task-duration-chip.tone-long {
+  --duration-bg: rgba(173, 87, 82, 0.2);
+  --duration-border: rgba(147, 72, 68, 0.25);
+  --duration-text: #8e4945;
+}
+
 .task-line-action {
   width: 32px;
   height: 32px;
@@ -829,6 +953,7 @@ input {
 
 .task-line-menu {
   position: relative;
+  grid-column: 4;
   display: flex;
   justify-content: flex-end;
 }

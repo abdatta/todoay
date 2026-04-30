@@ -41,7 +41,7 @@ const STORAGE_KEY = "todoay-state-v2";
 const LEGACY_STORAGE_KEY = "todoay-state-v1";
 const LOCAL_SYNC_META_KEY = "todoay-local-sync-v1";
 const SNAPSHOT_TABLE = "todoay_snapshots";
-const SYNC_DEBOUNCE_MS = 1200;
+const SYNC_DEBOUNCE_MS = 500;
 const SYNC_TIMEOUT_MS = 12000;
 
 type LocalSyncMeta = {
@@ -159,6 +159,7 @@ const isSameTodo = (left: TodoItem, right: TodoItem) =>
   left.id === right.id &&
   left.referenceId === right.referenceId &&
   left.text === right.text &&
+  left.durationMinutes === right.durationMinutes &&
   left.completed === right.completed &&
   left.pinned === right.pinned &&
   left.createdAt === right.createdAt &&
@@ -684,14 +685,16 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
 
         updateLocalSyncMeta((current) => ({
           ...current,
-          pendingSync: false,
+          pendingSync:
+            current.lastLocalChangeAt !== null && current.lastLocalChangeAt > startedAt,
           lastSyncedAt: upsertedSnapshot?.updated_at ?? syncedAt,
           lastRemoteRevision: Number(upsertedSnapshot?.revision ?? revision),
         }));
       } else {
         updateLocalSyncMeta((current) => ({
           ...current,
-          pendingSync: false,
+          pendingSync:
+            current.lastLocalChangeAt !== null && current.lastLocalChangeAt > startedAt,
           lastSyncedAt: remoteSnapshot?.updated_at ?? localSyncMetaRef.current.lastSyncedAt ?? startedAt,
           lastRemoteRevision: Number(remoteSnapshot?.revision ?? current.lastRemoteRevision),
         }));
@@ -825,13 +828,24 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
       !localSyncMeta.pendingSync ||
       !session?.user ||
       !online ||
+      isSyncing ||
       authConflictCheckInProgress ||
       Boolean(signInConflictPrompt)
     ) {
       return;
     }
     scheduleSync();
-  }, [authConflictCheckInProgress, localSyncMeta.pendingSync, online, ready, scheduleSync, session, signInConflictPrompt]);
+  }, [
+    authConflictCheckInProgress,
+    isSyncing,
+    localSyncMeta.lastLocalChangeAt,
+    localSyncMeta.pendingSync,
+    online,
+    ready,
+    scheduleSync,
+    session,
+    signInConflictPrompt,
+  ]);
 
   useEffect(() => {
     const client = getSupabaseClient();
@@ -944,11 +958,12 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
     isAuthenticated: Boolean(session?.user),
     isSyncing,
     pendingChanges: localSyncMeta.pendingSync,
+    lastLocalChangeAt: localSyncMeta.lastLocalChangeAt,
     lastSyncedAt: localSyncMeta.lastSyncedAt,
     lastSyncAttemptAt,
     error: syncError,
     user: toSyncUser(session),
-  }), [authReady, isSyncing, lastSyncAttemptAt, localSyncMeta.lastSyncedAt, localSyncMeta.pendingSync, online, session, syncError]);
+  }), [authReady, isSyncing, lastSyncAttemptAt, localSyncMeta.lastLocalChangeAt, localSyncMeta.lastSyncedAt, localSyncMeta.pendingSync, online, session, syncError]);
 
   const completeSignOut = useCallback(async (clearDevice: boolean) => {
     const client = getSupabaseClient();
@@ -1093,6 +1108,7 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
           id: todoId,
           referenceId: createId(),
           text: "",
+          durationMinutes: undefined,
           completed: false,
           pinned: false,
           createdAt: stamp.updatedAt,
@@ -1128,6 +1144,7 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
 
         const sharedPatch = {
           text: patch.text,
+          durationMinutes: patch.durationMinutes,
           completed: patch.completed,
           pinned: patch.pinned,
         };
@@ -1142,7 +1159,11 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
                   ? {
                       ...todo,
                       ...Object.fromEntries(
-                        Object.entries(sharedPatch).filter(([, value]) => value !== undefined),
+                        Object.entries(sharedPatch).filter(
+                          ([key, value]) =>
+                            value !== undefined ||
+                            (key === "durationMinutes" && "durationMinutes" in patch),
+                        ),
                       ),
                       updatedAt: stamp.updatedAt,
                       mutationId: stamp.mutationId,

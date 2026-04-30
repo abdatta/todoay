@@ -12,6 +12,7 @@ export type TodoItem = {
   id: string;
   referenceId: string;
   text: string;
+  durationMinutes?: number;
   completed: boolean;
   pinned: boolean;
   createdAt: string;
@@ -125,6 +126,7 @@ export type SyncStatus = {
   isAuthenticated: boolean;
   isSyncing: boolean;
   pendingChanges: boolean;
+  lastLocalChangeAt: string | null;
   lastSyncedAt: string | null;
   lastSyncAttemptAt: string | null;
   error: string | null;

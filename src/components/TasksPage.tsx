@@ -49,6 +49,22 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
 
+function getDurationTone(durationMinutes: number | undefined) {
+  if (!durationMinutes) {
+    return "empty";
+  }
+  if (durationMinutes < 15) {
+    return "quick";
+  }
+  if (durationMinutes < 60) {
+    return "medium";
+  }
+  if (durationMinutes < 360) {
+    return "deep";
+  }
+  return "long";
+}
+
 function TasksScreen() {
   const today = format(new Date(), "yyyy-MM-dd");
   const currentYear = new Date().getFullYear();
@@ -290,6 +306,31 @@ function TasksScreen() {
             onInput={(event: FormEvent<HTMLTextAreaElement>) => autoResizeTextarea(event.currentTarget)}
             onChange={(event) => updateTodo(todo.sourceDate, todo.id, { text: event.target.value })}
           />
+          {todo.text.trim() !== "" ? (
+            <input
+              className={`task-duration-chip tone-${getDurationTone(todo.durationMinutes)}`}
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              aria-label="Estimated task duration in minutes"
+              title="Estimated minutes"
+              placeholder="min"
+              value={todo.durationMinutes ?? ""}
+              onChange={(event) => {
+                const digits = event.target.value.replace(/\D/g, "").slice(0, 3);
+                const durationMinutes = digits
+                  ? Number(digits)
+                  : undefined;
+                updateTodo(todo.sourceDate, todo.id, { durationMinutes });
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  handleAddTodo();
+                }
+              }}
+            />
+          ) : null}
           <div
             className="task-line-menu"
             ref={(element) => {

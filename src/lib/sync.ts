@@ -99,11 +99,16 @@ const normalizeTodo = (todo: Partial<TodoItem>, date: string, index: number): To
   const id = todo.id ?? `${date}:${index}`;
   const createdAt = todo.createdAt ?? DEFAULT_TIMESTAMP;
   const updatedAt = todo.updatedAt ?? createdAt;
+  const durationMinutes =
+    typeof todo.durationMinutes === "number" && Number.isFinite(todo.durationMinutes) && todo.durationMinutes > 0
+      ? Math.floor(todo.durationMinutes)
+      : undefined;
 
   return {
     id,
     referenceId: todo.referenceId ?? id,
     text: todo.text ?? "",
+    durationMinutes,
     completed: todo.completed ?? false,
     pinned: todo.pinned ?? false,
     createdAt,
