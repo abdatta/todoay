@@ -613,6 +613,7 @@ input {
 .datepicker-week-days {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
+  gap: var(--datepicker-column-gap);
   text-align: center;
   font-size: 0.85rem;
   font-weight: 600;
@@ -624,17 +625,62 @@ input {
   padding: 4px;
 }
 
+.datepicker-calendar-gesture-area {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  overscroll-behavior: contain;
+}
+
+.datepicker-calendar-gesture-area.is-dragging {
+  cursor: grabbing;
+}
+
+.datepicker-grid-viewport {
+  position: relative;
+  overflow: hidden;
+  height: calc((var(--datepicker-day-size) * 6) + (var(--datepicker-row-gap) * 5));
+  margin-bottom: 16px;
+}
+
+.datepicker-month-track {
+  will-change: transform;
+}
+
+.datepicker-month-track.is-snapping {
+  transition: transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.datepicker-week-track {
+  display: flex;
+  flex-direction: column;
+}
+
+.datepicker-week-row,
 .datepicker-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  gap: 4px;
-  margin-bottom: 16px;
+  column-gap: var(--datepicker-column-gap);
+}
+
+.datepicker-week-row {
+  flex: 0 0 var(--datepicker-week-row-height);
+  height: var(--datepicker-week-row-height);
+}
+
+.datepicker-grid {
+  grid-template-rows: repeat(6, minmax(0, 1fr));
+  row-gap: var(--datepicker-row-gap);
+  height: 100%;
 }
 
 .datepicker-day {
   position: relative;
   isolation: isolate;
   aspect-ratio: 1;
+  width: var(--datepicker-day-size);
+  height: var(--datepicker-day-size);
+  justify-self: center;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -727,6 +773,7 @@ input {
 .datepicker-actions {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   border-top: 1px solid var(--border-subtle);
   padding-top: 12px;
   margin-top: 4px;
@@ -1040,6 +1087,87 @@ input {
 
 .task-add-row:hover {
   color: var(--text-main);
+}
+
+.backlog-list-card {
+  padding-top: 8px;
+}
+
+.backlog-date-group + .backlog-date-group {
+  margin-top: 4px;
+}
+
+.backlog-date-divider {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 20px 4px;
+}
+
+.backlog-date-divider::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(50% + 6px);
+  height: 1px;
+  background: color-mix(in srgb, var(--border-subtle) 86%, transparent);
+}
+
+.backlog-date-links {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+  padding-left: 8px;
+  padding-right: 8px;
+  background: var(--card-bg);
+}
+
+.backlog-date-link {
+  color: var(--text-muted);
+  font-size: 0.84rem;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: left;
+}
+
+.backlog-date-link:not(:last-child)::after {
+  content: ",";
+}
+
+.backlog-date-link:hover {
+  color: var(--accent-color);
+}
+
+.backlog-date-divider-line {
+  display: none;
+}
+
+.backlog-task-line {
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+}
+
+.backlog-task-text {
+  min-width: 0;
+  padding: 12px 0;
+  color: var(--text-main);
+  font-size: 1.02rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.backlog-duration-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.backlog-task-action {
+  cursor: pointer;
 }
 
 .task-completed-section {

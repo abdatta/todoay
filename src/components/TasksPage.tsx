@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type FormEvent } from "react";
 import { format, isToday, isTomorrow, isYesterday, parseISO } from "date-fns";
 import { Plus, GripVertical, Trash2, Copy, CheckSquare2, ChevronsRight } from "lucide-react";
+import BacklogTaskList from "@/components/BacklogPage";
 import ClientReady from "@/components/ClientReady";
 import { DatePickerPopupContent } from "@/components/CustomDatePicker";
 import DateNavigator from "@/components/DateNavigator";
@@ -557,54 +558,58 @@ function TasksScreen() {
 
         <DateNavigator date={selectedDate} onChange={setSelectedDate} dateProgress={dateProgress} />
 
-        <section
-          className="card task-list-card"
-          ref={taskCardRef}
-        >
-          <div
-            className="task-list"
+        {selectedDate === "backlog" ? (
+          <BacklogTaskList onSelectDate={setSelectedDate} />
+        ) : (
+          <section
+            className="card task-list-card"
+            ref={taskCardRef}
           >
-            <div ref={openItemsRef}>
-              {openTodos.length === 0 ? (
-                <div className="empty-state task-empty-state">No open tasks for this day.</div>
-              ) : (
-                openTodos.map((todo, index) => renderTodoRow(todo, openTodos[index - 1]?.id))
-              )}
-            </div>
-
-            <button className="task-add-row" onClick={handleAddTodo}>
-              <Plus size={18} />
-              <span>Add item</span>
-            </button>
-          </div>
-
-          {completedTodos.length > 0 ? (
-            <div className="task-completed-section">
-              <div className="task-section-label">{completedTodos.length} Completed {completedTodos.length === 1 ? "item" : "items"}</div>
-              <div
-                className="task-list"
-                ref={completedListRef}
-              >
-                {completedTodos.map((todo, index) => renderTodoRow(todo, completedTodos[index - 1]?.id, true))}
-              </div>
-            </div>
-          ) : null}
-
-          {dragState && draggedTodo ? (
             <div
-              className="task-drag-overlay"
-              style={{
-                left: `${dragState.originLeft}px`,
-                top: `${dragState.originTop}px`,
-                width: `${dragState.width}px`,
-                minHeight: `${dragState.height}px`,
-                transform: `translate(${dragOffsetX}px, ${dragOffsetY}px) scale(1.02)`,
-              }}
+              className="task-list"
             >
-              {renderTodoContent(draggedTodo, draggedTodoPreviousId, dragState.completed, true)}
+              <div ref={openItemsRef}>
+                {openTodos.length === 0 ? (
+                  <div className="empty-state task-empty-state">No open tasks for this day.</div>
+                ) : (
+                  openTodos.map((todo, index) => renderTodoRow(todo, openTodos[index - 1]?.id))
+                )}
+              </div>
+
+              <button className="task-add-row" onClick={handleAddTodo}>
+                <Plus size={18} />
+                <span>Add item</span>
+              </button>
             </div>
-          ) : null}
-        </section>
+
+            {completedTodos.length > 0 ? (
+              <div className="task-completed-section">
+                <div className="task-section-label">{completedTodos.length} Completed {completedTodos.length === 1 ? "item" : "items"}</div>
+                <div
+                  className="task-list"
+                  ref={completedListRef}
+                >
+                  {completedTodos.map((todo, index) => renderTodoRow(todo, completedTodos[index - 1]?.id, true))}
+                </div>
+              </div>
+            ) : null}
+
+            {dragState && draggedTodo ? (
+              <div
+                className="task-drag-overlay"
+                style={{
+                  left: `${dragState.originLeft}px`,
+                  top: `${dragState.originTop}px`,
+                  width: `${dragState.width}px`,
+                  minHeight: `${dragState.height}px`,
+                  transform: `translate(${dragOffsetX}px, ${dragOffsetY}px) scale(1.02)`,
+                }}
+              >
+                {renderTodoContent(draggedTodo, draggedTodoPreviousId, dragState.completed, true)}
+              </div>
+            ) : null}
+          </section>
+        )}
       </div>
       {menuDateAction && dateActionTodo ? (
         <div
