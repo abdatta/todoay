@@ -10,7 +10,7 @@ const pagesBasePath = process.env.PAGES_BASE_PATH || "";
 
 export const metadata: Metadata = {
   title: "Todoay",
-  description: "A local-first app for tasks, notes, misc lists, and lightweight settings.",
+  description: "A local-first app for tasks, threads, notes, and lightweight settings.",
   manifest: `${pagesBasePath}/manifest.webmanifest`,
   appleWebApp: {
     capable: true,

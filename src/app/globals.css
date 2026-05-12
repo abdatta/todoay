@@ -121,7 +121,7 @@ input {
 
 .nav-links {
   display: flex;
-  gap: 42px;
+  gap: 34px;
   align-items: center;
   justify-content: center;
 }
@@ -250,6 +250,7 @@ input {
 }
 
 .date-selector-container,
+.thread-selector-container,
 .segmented-control,
 .header-actions,
 .inline-toolbar {
@@ -259,6 +260,7 @@ input {
 }
 
 .date-selector-container,
+.thread-selector-container,
 .segmented-control {
   justify-content: center;
   margin: 0 auto 32px;
@@ -423,8 +425,7 @@ input {
 }
 
 .todo-row:last-child,
-.note-card:last-child,
-.undated-card:last-child {
+.note-card:last-child {
   border-bottom: none;
 }
 
@@ -464,8 +465,6 @@ input {
 .todo-input,
 .note-title-input,
 .note-textarea,
-.undated-title-input,
-.undated-textarea,
 .mini-input {
   width: 100%;
   color: var(--text-main);
@@ -641,6 +640,33 @@ input {
   overflow: hidden;
   height: calc((var(--datepicker-day-size) * 6) + (var(--datepicker-row-gap) * 5));
   margin-bottom: 16px;
+}
+
+.thread-picker-static {
+  width: clamp(132px, 22vw, 196px);
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-main);
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-weight: 600;
+  transition: var(--transition-smooth);
+}
+
+.thread-picker-static:hover,
+.thread-picker-static:focus-visible {
+  color: var(--text-main);
+  background: color-mix(in srgb, var(--accent-soft) 72%, transparent);
+  outline: none;
+}
+
+.thread-picker-static span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .datepicker-month-track {
@@ -868,6 +894,90 @@ input {
   text-decoration: line-through;
 }
 
+.thread-task-copy {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.thread-task-copy .task-text-input {
+  min-width: 0;
+  flex: 1 1 auto;
+  min-height: 52px;
+  white-space: nowrap;
+}
+
+.thread-inline-link {
+  width: fit-content;
+  max-width: 100%;
+  color: var(--accent-color);
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.thread-inline-link:hover {
+  color: var(--text-main);
+}
+
+.thread-task-schedule-indicator {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  color: var(--accent-color);
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent);
+}
+
+.thread-task-schedule-indicator:hover {
+  color: var(--text-main);
+  border-color: color-mix(in srgb, var(--accent-color) 34%, var(--border-subtle));
+}
+
+.thread-task-schedule-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.thread-task-schedule-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 12;
+  min-width: 132px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle);
+  background: #242321;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35), var(--glass-shadow);
+}
+
+.thread-task-schedule-date {
+  width: 100%;
+  min-height: 34px;
+  padding: 7px 10px;
+  border-radius: 9px;
+  color: var(--text-main);
+  text-align: left;
+  font-size: 0.92rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.thread-task-schedule-date:hover,
+.thread-task-schedule-date:focus-visible {
+  background: rgba(255, 255, 255, 0.05);
+  outline: none;
+}
+
 .task-duration-chip {
   width: 44px;
   height: 30px;
@@ -1000,7 +1110,7 @@ input {
 
 .task-line-menu {
   position: relative;
-  grid-column: 4;
+  grid-column: 5;
   display: flex;
   justify-content: flex-end;
 }
@@ -1087,6 +1197,21 @@ input {
 
 .task-add-row:hover {
   color: var(--text-main);
+}
+
+.task-add-row:disabled {
+  color: var(--text-light);
+  cursor: default;
+}
+
+.task-line-action:disabled,
+.task-duration-chip:disabled {
+  opacity: 0.48;
+  cursor: default;
+}
+
+.task-text-input[readonly] {
+  cursor: default;
 }
 
 .backlog-list-card {
@@ -1187,22 +1312,209 @@ input {
   padding: 36px 20px;
 }
 
-.note-card,
-.undated-card {
+.thread-index-card {
+  padding: 8px 0 12px;
+}
+
+.thread-create-row {
+  display: flex;
+  justify-content: flex-end;
+  margin: -8px 12px 14px 0;
+}
+
+.thread-create-button {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent-color) 32%, var(--border-subtle));
+  color: var(--text-main);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--accent-soft) 88%, transparent), rgba(255, 255, 255, 0.03));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 12px 24px -18px rgba(0, 0, 0, 0.6);
+  font-size: 0.94rem;
+  font-weight: 700;
+  transition: var(--transition-smooth);
+}
+
+.thread-create-button:hover,
+.thread-create-button:focus-visible {
+  color: var(--text-main);
+  border-color: color-mix(in srgb, var(--accent-color) 52%, var(--border-subtle));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--accent-soft) 100%, transparent), rgba(255, 255, 255, 0.06));
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.thread-create-button:active {
+  transform: translateY(0);
+}
+
+.thread-section-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.thread-list-row {
+  min-height: 72px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 0 20px;
+  transition:
+    background-color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s ease;
+}
+
+.thread-list-row + .thread-list-row {
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.thread-list-row.dragging {
+  background: color-mix(in srgb, var(--accent-soft) 36%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-color) 24%, transparent);
+}
+
+.thread-list-link {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 14px 0;
+}
+
+.thread-list-title {
+  color: var(--text-main);
+  font-size: 1.02rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.thread-draft-row {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.thread-draft-input {
+  width: 100%;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-main);
+  font-size: 1.02rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.thread-draft-input::placeholder {
+  color: var(--text-light);
+}
+
+.thread-list-meta {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.thread-list-action {
+  flex-shrink: 0;
+}
+
+.thread-list-action.active {
+  color: var(--accent-color);
+  border-color: color-mix(in srgb, var(--accent-color) 34%, var(--border-subtle));
+  background: color-mix(in srgb, var(--accent-soft) 72%, transparent);
+}
+
+.thread-list-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.thread-drag-handle {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid transparent;
+  cursor: grab;
+  touch-action: none;
+  transition: var(--transition-smooth);
+}
+
+.thread-drag-handle:hover,
+.thread-drag-handle:focus-visible {
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.06);
+  border-color: color-mix(in srgb, var(--accent-color) 24%, transparent);
+  outline: none;
+}
+
+.thread-drag-handle:active {
+  cursor: grabbing;
+}
+
+.thread-lane-divider,
+.thread-archive-divider {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  margin: 8px 20px 4px;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.thread-lane-divider::before,
+.thread-archive-divider::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--border-subtle);
+}
+
+.thread-lane-divider span,
+.thread-archive-divider span {
+  position: relative;
+  z-index: 1;
+  padding: 0 12px;
+  background: var(--card-bg);
+}
+
+.thread-empty-state {
+  padding: 40px 20px;
+}
+
+.note-card {
   position: relative;
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 
-.note-card + .note-card,
-.undated-card + .undated-card {
+.note-card + .note-card {
   padding-top: 2px;
   border-top: 1px solid var(--border-subtle);
 }
 
-.note-textarea,
-.undated-textarea {
+.note-textarea {
   min-height: calc(2em * 1.7);
   resize: none;
   overflow: hidden;
@@ -1713,19 +2025,6 @@ input {
   }
 }
 
-.undated-list-items {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.undated-list-row {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  gap: 10px;
-  align-items: center;
-}
-
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1796,12 +2095,33 @@ input {
     font-size: 0.72rem;
   }
 
+  .nav-links {
+    gap: 22px;
+  }
+
+  .thread-selector-container {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .thread-picker-static {
+    width: clamp(116px, 42vw, 168px);
+  }
+
+  .thread-list-row {
+    min-height: 76px;
+    padding: 0 16px;
+  }
+
+  .thread-create-row {
+    margin-right: 0;
+  }
+
   .datepicker-trigger {
     width: min(200px, 52vw);
   }
 
-  .todo-row,
-  .undated-list-row {
+  .todo-row {
     grid-template-columns: auto 1fr;
   }
 

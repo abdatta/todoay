@@ -21,6 +21,32 @@ export type TodoItem = {
   sortOrder: number;
   sourceDate: string;
   copiedFromDate?: string;
+  threadId?: string;
+  threadTaskId?: string;
+};
+
+export type ThreadTaskItem = {
+  id: string;
+  referenceId: string;
+  text: string;
+  durationMinutes?: number;
+  completed: boolean;
+  createdAt: string;
+  updatedAt: string;
+  mutationId: string;
+  sortOrder: number;
+};
+
+export type ThreadRecord = {
+  id: string;
+  title: string;
+  pinned: boolean;
+  archived: boolean;
+  createdAt: string;
+  updatedAt: string;
+  mutationId: string;
+  sortOrder: number;
+  tasks: ThreadTaskItem[];
 };
 
 export type NoteDocument = {
@@ -33,38 +59,18 @@ export type NoteDocument = {
   mutationId: string;
 };
 
-export type UndatedChecklistItem = {
-  id: string;
-  text: string;
-  completed: boolean;
-  createdAt: string;
-  updatedAt: string;
-  mutationId: string;
-};
-
-export type UndatedEntry = {
-  id: string;
-  type: "list" | "note";
-  title: string;
-  text: string;
-  items: UndatedChecklistItem[];
-  createdAt: string;
-  updatedAt: string;
-  mutationId: string;
-};
-
 export type ThemeMode = "dark" | "light" | "system";
 
 export type CopyToBehavior = "reference" | "value";
 
 export type TodoaySyncMetadata = {
-  schemaVersion: 2;
+  schemaVersion: 3;
   todoTombstones: Record<string, DeletionStamp>;
   noteTombstones: Record<string, DeletionStamp>;
   noteLinkMetadata: Record<string, Record<string, MutationStamp>>;
   noteLinkTombstones: Record<string, Record<string, DeletionStamp>>;
-  undatedEntryTombstones: Record<string, DeletionStamp>;
-  undatedChecklistItemTombstones: Record<string, DeletionStamp>;
+  threadTombstones: Record<string, DeletionStamp>;
+  threadTaskTombstones: Record<string, DeletionStamp>;
   settings: {
     themeMode: MutationStamp;
     copyToBehavior: MutationStamp;
@@ -75,19 +81,19 @@ export type TodoayState = {
   todosByDate: Record<string, TodoItem[]>;
   noteIdsByDate: Record<string, string[]>;
   noteDocs: Record<string, NoteDocument>;
-  undatedEntries: UndatedEntry[];
+  threads: ThreadRecord[];
   themeMode: ThemeMode;
   copyToBehavior: CopyToBehavior;
   syncMetadata: TodoaySyncMetadata;
 };
 
 export type TodoayExportData = {
-  version: 1 | 2;
+  version: 1 | 2 | 3;
   exportedAt: string;
   tasks: Record<string, TodoItem[]>;
   noteIdsByDate: Record<string, string[]>;
   noteDocs: Record<string, NoteDocument>;
-  undatedEntries: UndatedEntry[];
+  threads?: ThreadRecord[];
   syncMetadata?: TodoaySyncMetadata;
 };
 

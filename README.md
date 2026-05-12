@@ -1,6 +1,6 @@
 # Todoay
 
-Todoay is a lightweight daily-use app for tasks, notes and misc lists built with Next.js.
+Todoay is a lightweight daily-use app for tasks, threads, and notes built with Next.js.
 
 ## Local-first sync
 

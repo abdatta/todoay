@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type FormEvent } from "react";
+import Link from "next/link";
 import { format, isToday, isTomorrow, isYesterday, parseISO } from "date-fns";
 import { Plus, GripVertical, Trash2, Copy, CheckSquare2, ChevronsRight } from "lucide-react";
 import BacklogTaskList from "@/components/BacklogPage";
@@ -69,7 +70,16 @@ function getDurationTone(durationMinutes: number | undefined) {
 function TasksScreen() {
   const today = format(new Date(), "yyyy-MM-dd");
   const currentYear = new Date().getFullYear();
-  const [selectedDate, setSelectedDate] = useState(today);
+  const [selectedDate, setSelectedDate] = useState(() => {
+    if (typeof window === "undefined") {
+      return today;
+    }
+
+    const requestedDate = new URLSearchParams(window.location.search).get("date");
+    return requestedDate && /^\d{4}-\d{2}-\d{2}$/.test(requestedDate)
+      ? requestedDate
+      : today;
+  });
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [menuDateAction, setMenuDateAction] = useState<MenuDateAction | null>(null);
   const [menuViewDate, setMenuViewDate] = useState<Date>(parseISO(today));
@@ -269,6 +279,9 @@ function TasksScreen() {
       .map(([date]) => ({ value: date, label: getDateLabel(date) }))
       .sort((left, right) => left.value.localeCompare(right.value))
       .map(({ label }) => label);
+    const sourceThread = todo.threadId
+      ? state.threads.find((thread) => thread.id === todo.threadId) ?? null
+      : null;
 
     return (
       <div
@@ -286,27 +299,34 @@ function TasksScreen() {
             checked={todo.completed}
             onChange={(event) => updateTodo(todo.sourceDate, todo.id, { completed: event.target.checked })}
           />
-          <textarea
-            className={`task-text-input${completed ? " completed" : ""}`}
-            ref={(element) => {
-              autoResizeTextarea(element);
-              inputRefs.current[todo.id] = element;
-              if (element && pendingFocusRef.current?.id === todo.id) {
-                element.focus();
-                if (pendingFocusRef.current.mode === "selectAll") {
-                  element.select();
-                } else {
-                  const end = element.value.length;
-                  element.setSelectionRange(end, end);
+          <div className="thread-task-copy">
+            <textarea
+              className={`task-text-input${completed ? " completed" : ""}`}
+              ref={(element) => {
+                autoResizeTextarea(element);
+                inputRefs.current[todo.id] = element;
+                if (element && pendingFocusRef.current?.id === todo.id) {
+                  element.focus();
+                  if (pendingFocusRef.current.mode === "selectAll") {
+                    element.select();
+                  } else {
+                    const end = element.value.length;
+                    element.setSelectionRange(end, end);
+                  }
+                  pendingFocusRef.current = null;
                 }
-                pendingFocusRef.current = null;
-              }
-            }}
-            value={todo.text}
-            onKeyDown={(event) => handleTodoKeyDown(event, todo.id, todo.sourceDate, todo.text, previousTodoId)}
-            onInput={(event: FormEvent<HTMLTextAreaElement>) => autoResizeTextarea(event.currentTarget)}
-            onChange={(event) => updateTodo(todo.sourceDate, todo.id, { text: event.target.value })}
-          />
+              }}
+              value={todo.text}
+              onKeyDown={(event) => handleTodoKeyDown(event, todo.id, todo.sourceDate, todo.text, previousTodoId)}
+              onInput={(event: FormEvent<HTMLTextAreaElement>) => autoResizeTextarea(event.currentTarget)}
+              onChange={(event) => updateTodo(todo.sourceDate, todo.id, { text: event.target.value })}
+            />
+            {sourceThread ? (
+              <Link href={`/thread?threadId=${sourceThread.id}`} className="thread-inline-link">
+                {sourceThread.title || "Untitled thread"}
+              </Link>
+            ) : null}
+          </div>
           {todo.text.trim() !== "" ? (
             <input
               className={`task-duration-chip tone-${getDurationTone(todo.durationMinutes)}`}

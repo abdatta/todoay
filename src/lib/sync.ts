@@ -5,15 +5,15 @@ import type {
   DeletionStamp,
   MutationStamp,
   NoteDocument,
+  ThreadRecord,
+  ThreadTaskItem,
   ThemeMode,
   TodoItem,
   TodoayState,
   TodoaySyncMetadata,
-  UndatedChecklistItem,
-  UndatedEntry,
 } from "@/lib/types";
 
-export const STATE_SCHEMA_VERSION = 2 as const;
+export const STATE_SCHEMA_VERSION = 3 as const;
 
 const DEFAULT_TIMESTAMP = "1970-01-01T00:00:00.000Z";
 
@@ -48,8 +48,8 @@ export const createInitialSyncMetadata = (timestamp = DEFAULT_TIMESTAMP): Todoay
   noteTombstones: {},
   noteLinkMetadata: {},
   noteLinkTombstones: {},
-  undatedEntryTombstones: {},
-  undatedChecklistItemTombstones: {},
+  threadTombstones: {},
+  threadTaskTombstones: {},
   settings: {
     themeMode: createMutationStamp(timestamp, createLegacyMutationId("setting", "themeMode", timestamp)),
     copyToBehavior: createMutationStamp(timestamp, createLegacyMutationId("setting", "copyToBehavior", timestamp)),
@@ -60,7 +60,7 @@ export const createInitialState = (timestamp = DEFAULT_TIMESTAMP): TodoayState =
   todosByDate: {},
   noteIdsByDate: {},
   noteDocs: {},
-  undatedEntries: [],
+  threads: [],
   themeMode: "system",
   copyToBehavior: "reference",
   syncMetadata: createInitialSyncMetadata(timestamp),
@@ -117,6 +117,8 @@ const normalizeTodo = (todo: Partial<TodoItem>, date: string, index: number): To
     sortOrder: typeof todo.sortOrder === "number" ? todo.sortOrder : (index + 1) * 1024,
     sourceDate: todo.sourceDate ?? date,
     copiedFromDate: todo.copiedFromDate,
+    threadId: todo.threadId,
+    threadTaskId: todo.threadTaskId,
   };
 };
 
@@ -135,43 +137,54 @@ const normalizeNote = (note: Partial<NoteDocument>, noteId: string): NoteDocumen
   };
 };
 
-const normalizeChecklistItem = (
-  item: Partial<UndatedChecklistItem>,
-  fallbackKey: string,
+const normalizeThreadTask = (
+  task: Partial<ThreadTaskItem>,
+  threadId: string,
   index: number,
   fallbackTimestamp: string,
-): UndatedChecklistItem => {
-  const id = item.id ?? `${fallbackKey}:item:${index}`;
-  const createdAt = item.createdAt ?? fallbackTimestamp;
-  const updatedAt = item.updatedAt ?? createdAt;
+): ThreadTaskItem => {
+  const id = task.id ?? `${threadId}:task:${index}`;
+  const createdAt = task.createdAt ?? fallbackTimestamp;
+  const updatedAt = task.updatedAt ?? createdAt;
+  const durationMinutes =
+    typeof task.durationMinutes === "number" && Number.isFinite(task.durationMinutes) && task.durationMinutes > 0
+      ? Math.floor(task.durationMinutes)
+      : undefined;
 
   return {
     id,
-    text: item.text ?? "",
-    completed: item.completed ?? false,
+    referenceId: task.referenceId ?? id,
+    text: task.text ?? "",
+    durationMinutes,
+    completed: task.completed ?? false,
     createdAt,
     updatedAt,
-    mutationId: item.mutationId ?? createLegacyMutationId("undated-item", id, updatedAt),
+    mutationId: task.mutationId ?? createLegacyMutationId("thread-task", id, updatedAt),
+    sortOrder: typeof task.sortOrder === "number" ? task.sortOrder : (index + 1) * 1024,
   };
 };
 
-const normalizeUndatedEntry = (entry: Partial<UndatedEntry>, index: number): UndatedEntry => {
-  const id = entry.id ?? `undated:${index}`;
-  const createdAt = entry.createdAt ?? DEFAULT_TIMESTAMP;
-  const updatedAt = entry.updatedAt ?? createdAt;
-  const type = entry.type ?? "note";
+const normalizeThread = (thread: Partial<ThreadRecord>, index: number): ThreadRecord => {
+  const id = thread.id ?? `thread:${index}`;
+  const createdAt = thread.createdAt ?? DEFAULT_TIMESTAMP;
+  const updatedAt = thread.updatedAt ?? createdAt;
 
   return {
     id,
-    type,
-    title: entry.title ?? (type === "list" ? "Untitled list" : "Untitled note"),
-    text: entry.text ?? "",
-    items: (entry.items ?? []).map((item, itemIndex) =>
-      normalizeChecklistItem(item, id, itemIndex, createdAt),
-    ),
+    title: thread.title ?? "Untitled thread",
+    pinned: thread.pinned ?? false,
+    archived: thread.archived ?? false,
     createdAt,
     updatedAt,
-    mutationId: entry.mutationId ?? createLegacyMutationId("undated-entry", id, updatedAt),
+    mutationId: thread.mutationId ?? createLegacyMutationId("thread", id, updatedAt),
+    sortOrder: typeof thread.sortOrder === "number" ? thread.sortOrder : (index + 1) * 1024,
+    tasks: (thread.tasks ?? [])
+      .map((task, taskIndex) => normalizeThreadTask(task, id, taskIndex, createdAt))
+      .sort((left, right) =>
+        left.sortOrder - right.sortOrder ||
+        left.createdAt.localeCompare(right.createdAt) ||
+        left.id.localeCompare(right.id),
+      ),
   };
 };
 
@@ -235,16 +248,16 @@ const normalizeSyncMetadata = (
       );
       return accumulator;
     }, {}),
-    undatedEntryTombstones: sortObjectEntries(
-      existingMetadata?.undatedEntryTombstones ?? {},
-    ).reduce<Record<string, DeletionStamp>>((accumulator, [entryId, stamp]) => {
-      accumulator[entryId] = normalizeDeletionStamp(stamp, "undated-entry", entryId);
+    threadTombstones: sortObjectEntries(
+      existingMetadata?.threadTombstones ?? {},
+    ).reduce<Record<string, DeletionStamp>>((accumulator, [threadId, stamp]) => {
+      accumulator[threadId] = normalizeDeletionStamp(stamp, "thread", threadId);
       return accumulator;
     }, {}),
-    undatedChecklistItemTombstones: sortObjectEntries(
-      existingMetadata?.undatedChecklistItemTombstones ?? {},
-    ).reduce<Record<string, DeletionStamp>>((accumulator, [itemId, stamp]) => {
-      accumulator[itemId] = normalizeDeletionStamp(stamp, "undated-item", itemId);
+    threadTaskTombstones: sortObjectEntries(
+      existingMetadata?.threadTaskTombstones ?? {},
+    ).reduce<Record<string, DeletionStamp>>((accumulator, [taskId, stamp]) => {
+      accumulator[taskId] = normalizeDeletionStamp(stamp, "thread-task", taskId);
       return accumulator;
     }, {}),
     settings: {
@@ -298,10 +311,14 @@ export const normalizeState = (input?: Partial<TodoayState>): TodoayState => {
     {},
   );
 
-  const undatedEntries = (parsed.undatedEntries ?? [])
-    .map((entry, index) => normalizeUndatedEntry(entry, index))
+  const threads = (parsed.threads ?? [])
+    .map((thread, index) => normalizeThread(thread, index))
     .sort((left, right) =>
-      left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id),
+      Number(left.archived) - Number(right.archived) ||
+      Number(right.pinned) - Number(left.pinned) ||
+      left.sortOrder - right.sortOrder ||
+      left.createdAt.localeCompare(right.createdAt) ||
+      left.id.localeCompare(right.id),
     );
 
   const syncMetadata = normalizeSyncMetadata(
@@ -318,7 +335,7 @@ export const normalizeState = (input?: Partial<TodoayState>): TodoayState => {
     todosByDate,
     noteIdsByDate,
     noteDocs,
-    undatedEntries,
+    threads,
     syncMetadata,
   };
 };
@@ -333,12 +350,12 @@ const flattenTodos = (state: TodoayState) => {
   return todos;
 };
 
-const flattenUndatedEntries = (state: TodoayState) => {
-  const entries = new Map<string, UndatedEntry>();
-  state.undatedEntries.forEach((entry, index) => {
-    entries.set(entry.id, normalizeUndatedEntry(entry, index));
+const flattenThreads = (state: TodoayState) => {
+  const threads = new Map<string, ThreadRecord>();
+  state.threads.forEach((thread, index) => {
+    threads.set(thread.id, normalizeThread(thread, index));
   });
-  return entries;
+  return threads;
 };
 
 const pickLatestActive = <T extends MutationStamp>(left: T | null, right: T | null) => {
@@ -384,101 +401,104 @@ const sortTodosForStorage = (todos: TodoItem[]) =>
     left.id.localeCompare(right.id),
   );
 
-const sortUndatedItems = (items: UndatedChecklistItem[]) =>
-  [...items].sort((left, right) =>
+const sortThreadTasks = (tasks: ThreadTaskItem[]) =>
+  [...tasks].sort((left, right) =>
+    left.sortOrder - right.sortOrder ||
     left.createdAt.localeCompare(right.createdAt) ||
-    left.updatedAt.localeCompare(right.updatedAt) ||
     left.id.localeCompare(right.id),
   );
 
-const mergeChecklistItems = (
-  localEntry: UndatedEntry | null,
-  remoteEntry: UndatedEntry | null,
+const mergeThreadTasks = (
+  localThread: ThreadRecord | null,
+  remoteThread: ThreadRecord | null,
   mergedTombstones: Record<string, DeletionStamp>,
 ) => {
-  const mergedItems = new Map<string, UndatedChecklistItem>();
-  const activeItemIds = new Set<string>();
+  const mergedTasks = new Map<string, ThreadTaskItem>();
+  const activeTaskIds = new Set<string>();
+  const taskIds = new Set<string>();
 
-  const itemIds = new Set<string>();
-  (localEntry?.items ?? []).forEach((item) => itemIds.add(item.id));
-  (remoteEntry?.items ?? []).forEach((item) => itemIds.add(item.id));
+  (localThread?.tasks ?? []).forEach((task) => taskIds.add(task.id));
+  (remoteThread?.tasks ?? []).forEach((task) => taskIds.add(task.id));
 
-  itemIds.forEach((itemId) => {
-    const localItem = localEntry?.items.find((candidate) => candidate.id === itemId) ?? null;
-    const remoteItem = remoteEntry?.items.find((candidate) => candidate.id === itemId) ?? null;
-    const active = pickLatestActive(localItem, remoteItem);
-    const deletion = mergedTombstones[itemId];
+  taskIds.forEach((taskId) => {
+    const localTask = localThread?.tasks.find((candidate) => candidate.id === taskId) ?? null;
+    const remoteTask = remoteThread?.tasks.find((candidate) => candidate.id === taskId) ?? null;
+    const active = pickLatestActive(localTask, remoteTask);
+    const deletion = mergedTombstones[taskId];
 
     if (!active || deletionWinsAgainstActive(deletion, active)) {
       if (deletion) {
-        mergedTombstones[itemId] = deletion;
+        mergedTombstones[taskId] = deletion;
       }
       return;
     }
 
-    mergedItems.set(itemId, active);
-    activeItemIds.add(itemId);
+    mergedTasks.set(taskId, active);
+    activeTaskIds.add(taskId);
   });
 
   return {
-    items: sortUndatedItems(Array.from(mergedItems.values())),
-    activeItemIds,
+    tasks: sortThreadTasks(Array.from(mergedTasks.values())),
+    activeTaskIds,
   };
 };
 
-const mergeUndatedEntries = (localState: TodoayState, remoteState: TodoayState) => {
-  const localEntries = flattenUndatedEntries(localState);
-  const remoteEntries = flattenUndatedEntries(remoteState);
-  const entryIds = new Set<string>([...localEntries.keys(), ...remoteEntries.keys()]);
-  const mergedEntries = new Map<string, UndatedEntry>();
-  const mergedEntryTombstones = { ...localState.syncMetadata.undatedEntryTombstones };
+const mergeThreads = (localState: TodoayState, remoteState: TodoayState) => {
+  const localThreads = flattenThreads(localState);
+  const remoteThreads = flattenThreads(remoteState);
+  const threadIds = new Set<string>([...localThreads.keys(), ...remoteThreads.keys()]);
+  const mergedThreads = new Map<string, ThreadRecord>();
+  const mergedThreadTombstones = { ...localState.syncMetadata.threadTombstones };
+  const mergedThreadTaskTombstones = { ...localState.syncMetadata.threadTaskTombstones };
 
-  Object.entries(remoteState.syncMetadata.undatedEntryTombstones).forEach(([entryId, stamp]) => {
-    mergedEntryTombstones[entryId] = pickLatestDeletion(mergedEntryTombstones[entryId], stamp)!;
+  Object.entries(remoteState.syncMetadata.threadTombstones).forEach(([threadId, stamp]) => {
+    mergedThreadTombstones[threadId] = pickLatestDeletion(mergedThreadTombstones[threadId], stamp)!;
+  });
+  Object.entries(remoteState.syncMetadata.threadTaskTombstones).forEach(([taskId, stamp]) => {
+    mergedThreadTaskTombstones[taskId] = pickLatestDeletion(mergedThreadTaskTombstones[taskId], stamp)!;
   });
 
-  const mergedChecklistTombstones = { ...localState.syncMetadata.undatedChecklistItemTombstones };
-  Object.entries(remoteState.syncMetadata.undatedChecklistItemTombstones).forEach(([itemId, stamp]) => {
-    mergedChecklistTombstones[itemId] = pickLatestDeletion(mergedChecklistTombstones[itemId], stamp)!;
-  });
-
-  entryIds.forEach((entryId) => {
-    const localEntry = localEntries.get(entryId) ?? null;
-    const remoteEntry = remoteEntries.get(entryId) ?? null;
-    const active = pickLatestActive(localEntry, remoteEntry);
-    const deletion = mergedEntryTombstones[entryId];
+  threadIds.forEach((threadId) => {
+    const localThread = localThreads.get(threadId) ?? null;
+    const remoteThread = remoteThreads.get(threadId) ?? null;
+    const active = pickLatestActive(localThread, remoteThread);
+    const deletion = mergedThreadTombstones[threadId];
 
     if (!active || deletionWinsAgainstActive(deletion, active)) {
       if (deletion) {
-        mergedEntryTombstones[entryId] = deletion;
+        mergedThreadTombstones[threadId] = deletion;
       }
       return;
     }
 
-    const { items, activeItemIds } = mergeChecklistItems(
-      localEntry,
-      remoteEntry,
-      mergedChecklistTombstones,
+    const { tasks, activeTaskIds } = mergeThreadTasks(
+      localThread,
+      remoteThread,
+      mergedThreadTaskTombstones,
     );
-    activeItemIds.forEach((itemId) => {
-      if (mergedChecklistTombstones[itemId]) {
-        delete mergedChecklistTombstones[itemId];
+    activeTaskIds.forEach((taskId) => {
+      if (mergedThreadTaskTombstones[taskId]) {
+        delete mergedThreadTaskTombstones[taskId];
       }
     });
 
-    mergedEntries.set(entryId, {
+    mergedThreads.set(threadId, {
       ...active,
-      items,
+      tasks,
     });
-    delete mergedEntryTombstones[entryId];
+    delete mergedThreadTombstones[threadId];
   });
 
   return {
-    entries: Array.from(mergedEntries.values()).sort((left, right) =>
-      left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id),
+    threads: Array.from(mergedThreads.values()).sort((left, right) =>
+      Number(left.archived) - Number(right.archived) ||
+      Number(right.pinned) - Number(left.pinned) ||
+      left.sortOrder - right.sortOrder ||
+      left.createdAt.localeCompare(right.createdAt) ||
+      left.id.localeCompare(right.id),
     ),
-    entryTombstones: mergedEntryTombstones,
-    checklistTombstones: mergedChecklistTombstones,
+    threadTombstones: mergedThreadTombstones,
+    threadTaskTombstones: mergedThreadTaskTombstones,
   };
 };
 
@@ -629,7 +649,7 @@ export const mergeTodoayStates = (leftInput: TodoayState, rightInput: TodoayStat
       }
     });
 
-  const { entries, entryTombstones, checklistTombstones } = mergeUndatedEntries(left, right);
+  const { threads, threadTombstones, threadTaskTombstones } = mergeThreads(left, right);
 
   const themeMode =
     compareStampedValues(left.syncMetadata.settings.themeMode, right.syncMetadata.settings.themeMode) >= 0
@@ -647,7 +667,7 @@ export const mergeTodoayStates = (leftInput: TodoayState, rightInput: TodoayStat
     todosByDate: mergedTodosByDate,
     noteIdsByDate: mergedNoteIdsByDate,
     noteDocs: mergedNoteDocs,
-    undatedEntries: entries,
+    threads,
     themeMode: themeMode as ThemeMode,
     copyToBehavior: copyToBehavior as CopyToBehavior,
     syncMetadata: {
@@ -656,8 +676,8 @@ export const mergeTodoayStates = (leftInput: TodoayState, rightInput: TodoayStat
       noteTombstones: mergedNoteTombstones,
       noteLinkMetadata: mergedNoteLinkMetadata,
       noteLinkTombstones: mergedNoteLinkTombstones,
-      undatedEntryTombstones: entryTombstones,
-      undatedChecklistItemTombstones: checklistTombstones,
+      threadTombstones,
+      threadTaskTombstones,
       settings: {
         themeMode: pickLatestActive(
           left.syncMetadata.settings.themeMode,

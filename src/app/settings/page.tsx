@@ -26,7 +26,7 @@ const isTodoayExportData = (value: unknown): value is TodoayExportData => {
 
   const candidate = value as Partial<TodoayExportData>;
   return (
-    (candidate.version === 1 || candidate.version === 2) &&
+    (candidate.version === 1 || candidate.version === 2 || candidate.version === 3) &&
     typeof candidate.exportedAt === "string" &&
     typeof candidate.tasks === "object" &&
     candidate.tasks !== null &&
@@ -34,7 +34,7 @@ const isTodoayExportData = (value: unknown): value is TodoayExportData => {
     candidate.noteIdsByDate !== null &&
     typeof candidate.noteDocs === "object" &&
     candidate.noteDocs !== null &&
-    Array.isArray(candidate.undatedEntries)
+    (candidate.threads === undefined || Array.isArray(candidate.threads))
   );
 };
 
@@ -104,7 +104,8 @@ function SettingsScreen() {
 
     const taskCount = Object.values(pendingImport.tasks).reduce((sum, items) => sum + items.length, 0);
     const noteCount = Object.keys(pendingImport.noteDocs).length;
-    return `${taskCount} task${taskCount === 1 ? "" : "s"} and ${noteCount} note${noteCount === 1 ? "" : "s"}`;
+    const threadCount = pendingImport.threads?.length ?? 0;
+    return `${taskCount} task${taskCount === 1 ? "" : "s"}, ${noteCount} note${noteCount === 1 ? "" : "s"}, and ${threadCount} thread${threadCount === 1 ? "" : "s"}`;
   }, [pendingImport]);
 
   const syncInlineLabel = useMemo(() => {
@@ -128,7 +129,7 @@ function SettingsScreen() {
     link.click();
     window.URL.revokeObjectURL(url);
     setStatusTone("success");
-    setStatusMessage("Exported your tasks and notes as JSON.");
+    setStatusMessage("Exported your tasks, notes, and threads as JSON.");
   };
 
   const resetImportState = () => {
@@ -144,7 +145,7 @@ function SettingsScreen() {
     importData(data, nextResolutions);
     resetImportState();
     setStatusTone("success");
-    setStatusMessage("Imported data and merged it into your existing tasks and notes.");
+    setStatusMessage("Imported data and merged it into your existing tasks, notes, and threads.");
   };
 
   const handleImportFile = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -307,7 +308,7 @@ function SettingsScreen() {
           <span className="settings-row-text">
             <span className="settings-row-label">
               <Download size={18} color="var(--accent-color)" />
-              <span>Export tasks and notes</span>
+              <span>Export tasks, notes, and threads</span>
             </span>
             <span className="settings-row-description">
               Download everything as a JSON backup you can re-import later.
@@ -317,7 +318,7 @@ function SettingsScreen() {
             type="button"
             className="settings-icon-action"
             onClick={handleExport}
-            aria-label="Export tasks and notes as JSON"
+              aria-label="Export tasks, notes, and threads as JSON"
             title="Export JSON"
           >
             <Download size={18} />
@@ -333,7 +334,7 @@ function SettingsScreen() {
               <span>Import and merge</span>
             </span>
             <span className="settings-row-description">
-              Upload a Todoay export file to merge its tasks and notes with what you already have.
+              Upload a Todoay export file to merge its tasks, notes, and threads with what you already have.
             </span>
           </span>
           <div className="settings-import-actions">
@@ -348,7 +349,7 @@ function SettingsScreen() {
               type="button"
               className="settings-icon-action"
               onClick={() => fileInputRef.current?.click()}
-              aria-label="Import tasks and notes from JSON"
+              aria-label="Import tasks, notes, and threads from JSON"
               title="Import JSON"
             >
               <Upload size={18} />

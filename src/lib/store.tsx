@@ -29,12 +29,12 @@ import type {
   NoteDocument,
   SyncStatus,
   SyncUser,
+  ThreadRecord,
+  ThreadTaskItem,
   TodoItem,
   TodoayExportData,
   TodoayState,
   ThemeMode,
-  UndatedChecklistItem,
-  UndatedEntry,
 } from "@/lib/types";
 
 const STORAGE_KEY = "todoay-state-v2";
@@ -98,8 +98,8 @@ const createLocalSyncMeta = (): LocalSyncMeta => ({
 const getStateContentCount = (state: TodoayState) => {
   const taskCount = Object.values(state.todosByDate).reduce((sum, items) => sum + items.length, 0);
   const noteCount = Object.keys(state.noteDocs).length;
-  const miscCount = state.undatedEntries.length;
-  return taskCount + noteCount + miscCount;
+  const threadCount = state.threads.length;
+  return taskCount + noteCount + threadCount;
 };
 
 const hasAnyStoredContent = (state: TodoayState) => getStateContentCount(state) > 0;
@@ -164,7 +164,9 @@ const isSameTodo = (left: TodoItem, right: TodoItem) =>
   left.pinned === right.pinned &&
   left.createdAt === right.createdAt &&
   left.sourceDate === right.sourceDate &&
-  left.copiedFromDate === right.copiedFromDate;
+  left.copiedFromDate === right.copiedFromDate &&
+  left.threadId === right.threadId &&
+  left.threadTaskId === right.threadTaskId;
 
 const isSameNote = (left: NoteDocument, right: NoteDocument) =>
   left.id === right.id &&
@@ -203,7 +205,7 @@ const buildImportConflicts = (current: TodoayState, incoming: TodoayExportData):
     todosByDate: incoming.tasks,
     noteIdsByDate: incoming.noteIdsByDate,
     noteDocs: incoming.noteDocs,
-    undatedEntries: incoming.undatedEntries,
+    threads: incoming.threads ?? [],
     syncMetadata: incoming.syncMetadata,
   });
   const conflicts: ImportConflict[] = [];
@@ -257,7 +259,7 @@ const applyImportToState = (
     todosByDate: incoming.tasks,
     noteIdsByDate: incoming.noteIdsByDate,
     noteDocs: incoming.noteDocs,
-    undatedEntries: incoming.undatedEntries,
+    threads: incoming.threads ?? [],
     syncMetadata: incoming.syncMetadata,
   });
 
@@ -356,30 +358,14 @@ const applyImportToState = (
     });
   });
 
-  const existingUndatedKeys = new Set(
-    next.undatedEntries.map((entry) => `${entry.type}:${entry.title}:${entry.text}`),
-  );
-  normalizedIncoming.undatedEntries.forEach((entry) => {
-    const key = `${entry.type}:${entry.title}:${entry.text}`;
-    if (existingUndatedKeys.has(key)) {
+  const existingThreadIds = new Set(next.threads.map((thread) => thread.id));
+  normalizedIncoming.threads.forEach((thread) => {
+    if (existingThreadIds.has(thread.id)) {
       return;
     }
 
-    next.undatedEntries.push({
-      ...entry,
-      id: createId(),
-      createdAt: stamp.updatedAt,
-      updatedAt: stamp.updatedAt,
-      mutationId: stamp.mutationId,
-      items: entry.items.map((item) => ({
-        ...item,
-        id: createId(),
-        createdAt: stamp.updatedAt,
-        updatedAt: stamp.updatedAt,
-        mutationId: stamp.mutationId,
-      })),
-    });
-    existingUndatedKeys.add(key);
+    next.threads.push(thread);
+    existingThreadIds.add(thread.id);
   });
 
   return normalizeState(next);
@@ -408,20 +394,19 @@ type StoreValue = {
   copyTodoToDate: (fromDate: string, todoId: string, toDate: string) => void;
   copyTodoReferenceToDate: (fromDate: string, todoId: string, toDate: string) => void;
   moveTodoReferenceToDate: (fromDate: string, todoId: string, toDate: string) => void;
+  addThread: (title?: string) => string;
+  updateThread: (threadId: string, patch: Partial<ThreadRecord>) => void;
+  deleteThread: (threadId: string) => void;
+  reorderThread: (threadId: string, targetThreadId: string, placement: "before" | "after") => void;
+  addThreadTask: (threadId: string) => string;
+  updateThreadTask: (threadId: string, taskId: string, patch: Partial<ThreadTaskItem>) => void;
+  deleteThreadTask: (threadId: string, taskId: string) => void;
+  reorderThreadTask: (threadId: string, taskId: string, targetTaskId: string, placement: "before" | "after") => void;
+  scheduleThreadTaskToDate: (threadId: string, taskId: string, toDate: string) => void;
   addNote: (date: string) => string;
   updateNoteDoc: (noteId: string, patch: Partial<NoteDocument>) => void;
   removeNoteFromDate: (date: string, noteId: string) => void;
   carryNoteToDate: (fromDate: string, noteId: string, toDate: string) => void;
-  addUndatedEntry: (type: "list" | "note") => void;
-  updateUndatedEntry: (entryId: string, patch: Partial<UndatedEntry>) => void;
-  deleteUndatedEntry: (entryId: string) => void;
-  addUndatedChecklistItem: (entryId: string) => void;
-  updateUndatedChecklistItem: (
-    entryId: string,
-    itemId: string,
-    patch: Partial<UndatedChecklistItem>,
-  ) => void;
-  deleteUndatedChecklistItem: (entryId: string, itemId: string) => void;
   getVisibleTodos: (date: string, today: string) => TodoItem[];
   getVisibleNoteIds: (date: string, today: string) => string[];
   getDatesForNote: (noteId: string) => string[];
@@ -1061,12 +1046,12 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
     },
     exportData() {
       return {
-        version: 2,
+        version: 3,
         exportedAt: new Date().toISOString(),
         tasks: state.todosByDate,
         noteIdsByDate: state.noteIdsByDate,
         noteDocs: state.noteDocs,
-        undatedEntries: state.undatedEntries,
+        threads: state.threads,
         syncMetadata: state.syncMetadata,
       };
     },
@@ -1179,6 +1164,31 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
               ),
             ]),
           ),
+          threads: current.threads.map((thread) => ({
+            ...thread,
+            tasks: thread.tasks.map((task) =>
+              task.referenceId === sourceTodo.referenceId
+                ? {
+                    ...task,
+                    ...Object.fromEntries(
+                      Object.entries(sharedPatch).filter(
+                        ([key, value]) =>
+                          value !== undefined ||
+                          (key === "durationMinutes" && "durationMinutes" in patch),
+                      ),
+                    ),
+                    updatedAt: stamp.updatedAt,
+                    mutationId: stamp.mutationId,
+                  }
+                : task,
+            ),
+            updatedAt: thread.tasks.some((task) => task.referenceId === sourceTodo.referenceId)
+              ? stamp.updatedAt
+              : thread.updatedAt,
+            mutationId: thread.tasks.some((task) => task.referenceId === sourceTodo.referenceId)
+              ? stamp.mutationId
+              : thread.mutationId,
+          })),
         };
       });
     },
@@ -1278,6 +1288,8 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
           mutationId: stamp.mutationId,
           sortOrder: getNextTodoSortOrder(current.todosByDate[toDate] ?? []),
           copiedFromDate: fromDate,
+          threadId: undefined,
+          threadTaskId: undefined,
         };
 
         return {
@@ -1363,6 +1375,402 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
                 },
               }
             : current.syncMetadata,
+        };
+      });
+    },
+    addThread(title) {
+      const threadId = createId();
+      applyLocalMutation((current, stamp) => ({
+        ...current,
+        threads: [
+          {
+            id: threadId,
+            title: title?.trim() || "Untitled thread",
+            pinned: false,
+            archived: false,
+            createdAt: stamp.updatedAt,
+            updatedAt: stamp.updatedAt,
+            mutationId: stamp.mutationId,
+            sortOrder:
+              Math.min(
+                1024,
+                ...current.threads
+                  .filter((thread) => !thread.archived && !thread.pinned)
+                  .map((thread) => thread.sortOrder),
+              ) - 1024,
+            tasks: [],
+          },
+          ...current.threads,
+        ],
+        syncMetadata: {
+          ...current.syncMetadata,
+          threadTombstones: Object.fromEntries(
+            Object.entries(current.syncMetadata.threadTombstones).filter(([key]) => key !== threadId),
+          ),
+        },
+      }));
+
+      return threadId;
+    },
+    updateThread(threadId, patch) {
+      applyLocalMutation((current, stamp) => ({
+        ...current,
+        threads: current.threads.map((thread) =>
+          thread.id === threadId
+            ? {
+                ...thread,
+                ...patch,
+                pinned: patch.archived ? false : patch.pinned ?? thread.pinned,
+                tasks: patch.tasks ?? thread.tasks,
+                updatedAt: stamp.updatedAt,
+                mutationId: stamp.mutationId,
+              }
+            : thread,
+        ),
+      }));
+    },
+    reorderThread(threadId, targetThreadId, placement) {
+      applyLocalMutation((current, stamp) => {
+        const sourceThread = current.threads.find((thread) => thread.id === threadId);
+        const targetThread = current.threads.find((thread) => thread.id === targetThreadId);
+        if (!sourceThread || !targetThread || sourceThread.id === targetThread.id) {
+          return current;
+        }
+
+        const inSameLane =
+          sourceThread.archived === targetThread.archived &&
+          sourceThread.pinned === targetThread.pinned;
+        if (!inSameLane) {
+          return current;
+        }
+
+        const laneThreads = current.threads
+          .filter((thread) => thread.archived === sourceThread.archived && thread.pinned === sourceThread.pinned)
+          .sort((left, right) => left.sortOrder - right.sortOrder || left.id.localeCompare(right.id));
+        const movingIndex = laneThreads.findIndex((thread) => thread.id === threadId);
+        const rawTargetIndex = laneThreads.findIndex((thread) => thread.id === targetThreadId);
+        if (movingIndex === -1 || rawTargetIndex === -1) {
+          return current;
+        }
+
+        const nextLane = [...laneThreads];
+        const [movingThread] = nextLane.splice(movingIndex, 1);
+        let targetIndex = rawTargetIndex;
+        if (movingIndex < rawTargetIndex) {
+          targetIndex -= 1;
+        }
+        if (placement === "after") {
+          targetIndex += 1;
+        }
+        nextLane.splice(targetIndex, 0, movingThread);
+
+        const resequenced = new Map(
+          nextLane.map((thread, index) => [
+            thread.id,
+            {
+              sortOrder: (index + 1) * 1024,
+              updatedAt: stamp.updatedAt,
+              mutationId: stamp.mutationId,
+            },
+          ]),
+        );
+
+        return {
+          ...current,
+          threads: current.threads.map((thread) => {
+            const patchForThread = resequenced.get(thread.id);
+            return patchForThread ? { ...thread, ...patchForThread } : thread;
+          }),
+        };
+      });
+    },
+    deleteThread(threadId) {
+      applyLocalMutation((current, stamp) => {
+        const thread = current.threads.find((candidate) => candidate.id === threadId);
+        const relatedTodos = Object.values(current.todosByDate)
+          .flat()
+          .filter((todo) => todo.threadId === threadId);
+
+        return {
+          ...current,
+          threads: current.threads.filter((candidate) => candidate.id !== threadId),
+          todosByDate: Object.fromEntries(
+            Object.entries(current.todosByDate).map(([date, items]) => [
+              date,
+              items.filter((todo) => todo.threadId !== threadId),
+            ]),
+          ),
+          syncMetadata: {
+            ...current.syncMetadata,
+            threadTombstones: {
+              ...current.syncMetadata.threadTombstones,
+              [threadId]: {
+                deletedAt: stamp.updatedAt,
+                mutationId: stamp.mutationId,
+              },
+            },
+            threadTaskTombstones: {
+              ...current.syncMetadata.threadTaskTombstones,
+              ...Object.fromEntries(
+                (thread?.tasks ?? []).map((task) => [
+                  task.id,
+                  {
+                    deletedAt: stamp.updatedAt,
+                    mutationId: stamp.mutationId,
+                  },
+                ]),
+              ),
+            },
+            todoTombstones: {
+              ...current.syncMetadata.todoTombstones,
+              ...Object.fromEntries(
+                relatedTodos.map((todo) => [
+                  todo.id,
+                  {
+                    deletedAt: stamp.updatedAt,
+                    mutationId: stamp.mutationId,
+                  },
+                ]),
+              ),
+            },
+          },
+        };
+      });
+    },
+    addThreadTask(threadId) {
+      const taskId = createId();
+      applyLocalMutation((current, stamp) => ({
+        ...current,
+        threads: current.threads.map((thread) =>
+          thread.id === threadId
+            ? {
+                ...thread,
+                updatedAt: stamp.updatedAt,
+                mutationId: stamp.mutationId,
+                tasks: [
+                  ...thread.tasks,
+                  {
+                    id: taskId,
+                    referenceId: createId(),
+                    text: "",
+                    durationMinutes: undefined,
+                    completed: false,
+                    createdAt: stamp.updatedAt,
+                    updatedAt: stamp.updatedAt,
+                    mutationId: stamp.mutationId,
+                    sortOrder: (thread.tasks[thread.tasks.length - 1]?.sortOrder ?? 0) + 1024,
+                  },
+                ],
+              }
+            : thread,
+        ),
+        syncMetadata: {
+          ...current.syncMetadata,
+          threadTaskTombstones: Object.fromEntries(
+            Object.entries(current.syncMetadata.threadTaskTombstones).filter(([key]) => key !== taskId),
+          ),
+        },
+      }));
+
+      return taskId;
+    },
+    updateThreadTask(threadId, taskId, patch) {
+      applyLocalMutation((current, stamp) => {
+        const thread = current.threads.find((candidate) => candidate.id === threadId);
+        const sourceTask = thread?.tasks.find((task) => task.id === taskId);
+        if (!sourceTask) {
+          return current;
+        }
+
+        const sharedPatch = {
+          text: patch.text,
+          durationMinutes: patch.durationMinutes,
+          completed: patch.completed,
+        };
+
+        return {
+          ...current,
+          threads: current.threads.map((candidate) =>
+            candidate.id === threadId
+              ? {
+                  ...candidate,
+                  updatedAt: stamp.updatedAt,
+                  mutationId: stamp.mutationId,
+                  tasks: candidate.tasks.map((task) =>
+                    task.id === taskId
+                      ? {
+                          ...task,
+                          ...patch,
+                          updatedAt: stamp.updatedAt,
+                          mutationId: stamp.mutationId,
+                        }
+                      : task,
+                  ),
+                }
+              : candidate,
+          ),
+          todosByDate: Object.fromEntries(
+            Object.entries(current.todosByDate).map(([date, items]) => [
+              date,
+              items.map((todo) =>
+                todo.referenceId === sourceTask.referenceId
+                  ? {
+                      ...todo,
+                      ...Object.fromEntries(
+                        Object.entries(sharedPatch).filter(
+                          ([key, value]) =>
+                            value !== undefined ||
+                            (key === "durationMinutes" && "durationMinutes" in patch),
+                        ),
+                      ),
+                      updatedAt: stamp.updatedAt,
+                      mutationId: stamp.mutationId,
+                    }
+                  : todo,
+              ),
+            ]),
+          ),
+        };
+      });
+    },
+    deleteThreadTask(threadId, taskId) {
+      applyLocalMutation((current, stamp) => {
+        const thread = current.threads.find((candidate) => candidate.id === threadId);
+        const task = thread?.tasks.find((candidate) => candidate.id === taskId);
+        const relatedTodos = task
+          ? Object.values(current.todosByDate)
+              .flat()
+              .filter((todo) => todo.referenceId === task.referenceId)
+          : [];
+
+        return {
+          ...current,
+          threads: current.threads.map((candidate) =>
+            candidate.id === threadId
+              ? {
+                  ...candidate,
+                  updatedAt: stamp.updatedAt,
+                  mutationId: stamp.mutationId,
+                  tasks: candidate.tasks.filter((candidateTask) => candidateTask.id !== taskId),
+                }
+              : candidate,
+          ),
+          todosByDate: Object.fromEntries(
+            Object.entries(current.todosByDate).map(([date, items]) => [
+              date,
+              task ? items.filter((todo) => todo.referenceId !== task.referenceId) : items,
+            ]),
+          ),
+          syncMetadata: {
+            ...current.syncMetadata,
+            threadTaskTombstones: {
+              ...current.syncMetadata.threadTaskTombstones,
+              [taskId]: {
+                deletedAt: stamp.updatedAt,
+                mutationId: stamp.mutationId,
+              },
+            },
+            todoTombstones: {
+              ...current.syncMetadata.todoTombstones,
+              ...Object.fromEntries(
+                relatedTodos.map((todo) => [
+                  todo.id,
+                  {
+                    deletedAt: stamp.updatedAt,
+                    mutationId: stamp.mutationId,
+                  },
+                ]),
+              ),
+            },
+          },
+        };
+      });
+    },
+    reorderThreadTask(threadId, taskId, targetTaskId, placement) {
+      applyLocalMutation((current, stamp) => ({
+        ...current,
+        threads: current.threads.map((thread) => {
+          if (thread.id !== threadId) {
+            return thread;
+          }
+
+          const sourceTask = thread.tasks.find((task) => task.id === taskId);
+          const targetTask = thread.tasks.find((task) => task.id === targetTaskId);
+          if (!sourceTask || !targetTask || sourceTask.id === targetTask.id || sourceTask.completed !== targetTask.completed) {
+            return thread;
+          }
+
+          const group = thread.tasks.filter((task) => task.completed === sourceTask.completed);
+          const movingIndex = group.findIndex((task) => task.id === taskId);
+          const rawTargetIndex = group.findIndex((task) => task.id === targetTaskId);
+          if (movingIndex === -1 || rawTargetIndex === -1) {
+            return thread;
+          }
+
+          const nextGroup = [...group];
+          const [movingTask] = nextGroup.splice(movingIndex, 1);
+          let targetIndex = rawTargetIndex;
+          if (movingIndex < rawTargetIndex) {
+            targetIndex -= 1;
+          }
+          if (placement === "after") {
+            targetIndex += 1;
+          }
+          nextGroup.splice(targetIndex, 0, movingTask);
+
+          const resequencedGroup = nextGroup.map((task, index) => ({
+            ...task,
+            sortOrder: (index + 1) * 1024,
+            updatedAt: stamp.updatedAt,
+            mutationId: stamp.mutationId,
+          }));
+          const nextOpen = sourceTask.completed ? thread.tasks.filter((task) => !task.completed) : resequencedGroup;
+          const nextCompleted = sourceTask.completed ? resequencedGroup : thread.tasks.filter((task) => task.completed);
+
+          return {
+            ...thread,
+            updatedAt: stamp.updatedAt,
+            mutationId: stamp.mutationId,
+            tasks: [...nextOpen, ...nextCompleted],
+          };
+        }),
+      }));
+    },
+    scheduleThreadTaskToDate(threadId, taskId, toDate) {
+      applyLocalMutation((current, stamp) => {
+        const thread = current.threads.find((candidate) => candidate.id === threadId);
+        const task = thread?.tasks.find((candidate) => candidate.id === taskId);
+        if (!thread || !task) {
+          return current;
+        }
+
+        const targetTodos = current.todosByDate[toDate] ?? [];
+        if (targetTodos.some((todo) => todo.referenceId === task.referenceId)) {
+          return current;
+        }
+
+        const nextTodo: TodoItem = {
+          id: createId(),
+          referenceId: task.referenceId,
+          text: task.text,
+          durationMinutes: task.durationMinutes,
+          completed: task.completed,
+          pinned: false,
+          createdAt: stamp.updatedAt,
+          updatedAt: stamp.updatedAt,
+          mutationId: stamp.mutationId,
+          sortOrder: getNextTodoSortOrder(targetTodos),
+          sourceDate: toDate,
+          threadId,
+          threadTaskId: task.id,
+        };
+
+        return {
+          ...current,
+          todosByDate: {
+            ...current.todosByDate,
+            [toDate]: [...targetTodos, nextTodo],
+          },
         };
       });
     },
@@ -1501,147 +1909,6 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
           },
         };
       });
-    },
-    addUndatedEntry(type) {
-      applyLocalMutation((current, stamp) => ({
-        ...current,
-        undatedEntries: [
-          ...current.undatedEntries,
-          {
-            id: createId(),
-            type,
-            title: type === "list" ? "Untitled list" : "Untitled note",
-            text: "",
-            items:
-              type === "list"
-                ? [
-                    {
-                      id: createId(),
-                      text: "",
-                      completed: false,
-                      createdAt: stamp.updatedAt,
-                      updatedAt: stamp.updatedAt,
-                      mutationId: stamp.mutationId,
-                    },
-                  ]
-                : [],
-            createdAt: stamp.updatedAt,
-            updatedAt: stamp.updatedAt,
-            mutationId: stamp.mutationId,
-          },
-        ],
-      }));
-    },
-    updateUndatedEntry(entryId, patch) {
-      applyLocalMutation((current, stamp) => ({
-        ...current,
-        undatedEntries: current.undatedEntries.map((entry) =>
-          entry.id === entryId
-            ? {
-                ...entry,
-                ...patch,
-                updatedAt: stamp.updatedAt,
-                mutationId: stamp.mutationId,
-              }
-            : entry,
-        ),
-      }));
-    },
-    deleteUndatedEntry(entryId) {
-      applyLocalMutation((current, stamp) => ({
-        ...current,
-        undatedEntries: current.undatedEntries.filter((entry) => entry.id !== entryId),
-        syncMetadata: {
-          ...current.syncMetadata,
-          undatedEntryTombstones: {
-            ...current.syncMetadata.undatedEntryTombstones,
-            [entryId]: {
-              deletedAt: stamp.updatedAt,
-              mutationId: stamp.mutationId,
-            },
-          },
-        },
-      }));
-    },
-    addUndatedChecklistItem(entryId) {
-      applyLocalMutation((current, stamp) => ({
-        ...current,
-        undatedEntries: current.undatedEntries.map((entry) => {
-          if (entry.id !== entryId || entry.type !== "list") {
-            return entry;
-          }
-
-          return {
-            ...entry,
-            updatedAt: stamp.updatedAt,
-            mutationId: stamp.mutationId,
-            items: [
-              ...entry.items,
-              {
-                id: createId(),
-                text: "",
-                completed: false,
-                createdAt: stamp.updatedAt,
-                updatedAt: stamp.updatedAt,
-                mutationId: stamp.mutationId,
-              },
-            ],
-          };
-        }),
-      }));
-    },
-    updateUndatedChecklistItem(entryId, itemId, patch) {
-      applyLocalMutation((current, stamp) => ({
-        ...current,
-        undatedEntries: current.undatedEntries.map((entry) => {
-          if (entry.id !== entryId || entry.type !== "list") {
-            return entry;
-          }
-
-          return {
-            ...entry,
-            updatedAt: stamp.updatedAt,
-            mutationId: stamp.mutationId,
-            items: entry.items.map((item) =>
-              item.id === itemId
-                ? {
-                    ...item,
-                    ...patch,
-                    updatedAt: stamp.updatedAt,
-                    mutationId: stamp.mutationId,
-                  }
-                : item,
-            ),
-          };
-        }),
-      }));
-    },
-    deleteUndatedChecklistItem(entryId, itemId) {
-      applyLocalMutation((current, stamp) => ({
-        ...current,
-        undatedEntries: current.undatedEntries.map((entry) => {
-          if (entry.id !== entryId || entry.type !== "list") {
-            return entry;
-          }
-
-          return {
-            ...entry,
-            updatedAt: stamp.updatedAt,
-            mutationId: stamp.mutationId,
-            items: entry.items.filter((item) => item.id !== itemId),
-          };
-        }),
-        syncMetadata: {
-          ...current.syncMetadata,
-          undatedChecklistItemTombstones: {
-            ...current.syncMetadata.undatedChecklistItemTombstones,
-            [itemId]: {
-              deletedAt: stamp.updatedAt,
-              mutationId: stamp.mutationId,
-            },
-          },
-        },
-      }));
     },
     getVisibleTodos(date, today) {
       const direct = state.todosByDate[date] ?? [];
