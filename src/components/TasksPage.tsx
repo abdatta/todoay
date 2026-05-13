@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type FormEvent } from "react";
 import Link from "next/link";
 import { format, isToday, isTomorrow, isYesterday, parseISO } from "date-fns";
-import { Plus, GripVertical, Trash2, Copy, CheckSquare2, ChevronsRight } from "lucide-react";
+import { Plus, GripVertical, Trash2, Copy, CheckSquare2, ChevronsRight, Layers } from "lucide-react";
 import BacklogTaskList from "@/components/BacklogPage";
 import ClientReady from "@/components/ClientReady";
 import { DatePickerPopupContent } from "@/components/CustomDatePicker";
@@ -81,12 +81,14 @@ function TasksScreen() {
       : today;
   });
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [openThreadMenuId, setOpenThreadMenuId] = useState<string | null>(null);
   const [menuDateAction, setMenuDateAction] = useState<MenuDateAction | null>(null);
   const [menuViewDate, setMenuViewDate] = useState<Date>(parseISO(today));
   const [dragState, setDragState] = useState<DragState | null>(null);
   const pendingFocusRef = useRef<{ id: string; mode: "selectAll" | "cursorEnd" } | null>(null);
   const inputRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
   const menuRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const threadMenuRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const taskCardRef = useRef<HTMLElement | null>(null);
   const openItemsRef = useRef<HTMLDivElement | null>(null);
@@ -126,19 +128,24 @@ function TasksScreen() {
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {
-      if (!openMenuId) {
+      if (!openMenuId && !openThreadMenuId) {
         return;
       }
-      const currentMenu = menuRefs.current[openMenuId];
-      if (currentMenu && event.target instanceof Node && !currentMenu.contains(event.target)) {
+      const currentMenu = openMenuId ? menuRefs.current[openMenuId] : null;
+      const currentThreadMenu = openThreadMenuId ? threadMenuRefs.current[openThreadMenuId] : null;
+      if (event.target instanceof Node && currentMenu && !currentMenu.contains(event.target)) {
         setOpenMenuId(null);
         setMenuDateAction(null);
+      }
+      if (event.target instanceof Node && currentThreadMenu && !currentThreadMenu.contains(event.target)) {
+        setOpenThreadMenuId(null);
       }
     };
 
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setOpenMenuId(null);
+        setOpenThreadMenuId(null);
         setMenuDateAction(null);
       }
     };
@@ -149,7 +156,7 @@ function TasksScreen() {
       document.removeEventListener("mousedown", handlePointerDown);
       document.removeEventListener("keydown", handleEscape);
     };
-  }, [openMenuId]);
+  }, [openMenuId, openThreadMenuId]);
 
   useEffect(() => {
     return () => {
@@ -321,11 +328,6 @@ function TasksScreen() {
               onInput={(event: FormEvent<HTMLTextAreaElement>) => autoResizeTextarea(event.currentTarget)}
               onChange={(event) => updateTodo(todo.sourceDate, todo.id, { text: event.target.value })}
             />
-            {sourceThread ? (
-              <Link href={`/thread?threadId=${sourceThread.id}`} className="thread-inline-link">
-                {sourceThread.title || "Untitled thread"}
-              </Link>
-            ) : null}
           </div>
           {todo.text.trim() !== "" ? (
             <input
@@ -352,6 +354,36 @@ function TasksScreen() {
               }}
             />
           ) : null}
+          {sourceThread ? (
+            <div
+              className="date-task-thread-menu"
+              ref={(element) => {
+                threadMenuRefs.current[todo.id] = element;
+              }}
+            >
+              <button
+                type="button"
+                className="thread-task-schedule-indicator date-task-thread-indicator"
+                aria-label={`Show thread for ${todo.text || "this task"}`}
+                title={`In ${sourceThread.title || "Untitled thread"}`}
+                aria-expanded={openThreadMenuId === todo.id}
+                onClick={() => {
+                  setOpenMenuId(null);
+                  setMenuDateAction(null);
+                  setOpenThreadMenuId((current) => (current === todo.id ? null : todo.id));
+                }}
+              >
+                <Layers size={15} />
+              </button>
+              {openThreadMenuId === todo.id ? (
+                <div className="date-task-thread-popover" role="menu" aria-label="Thread">
+                  <Link href={`/thread?threadId=${sourceThread.id}`} className="date-task-thread-link" role="menuitem">
+                    {sourceThread.title || "Untitled thread"}
+                  </Link>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <div
             className="task-line-menu"
             ref={(element) => {
@@ -370,6 +402,7 @@ function TasksScreen() {
                   return;
                 }
 
+                setOpenThreadMenuId(null);
                 setOpenMenuId((current) => (current === todo.id ? null : todo.id));
                 setMenuDateAction(null);
               }}

@@ -11,7 +11,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { format, isToday, isYesterday, parseISO } from "date-fns";
-import { Archive, ArchiveRestore, GripVertical, Layers, Pin, Plus } from "lucide-react";
+import { Archive, ArchiveRestore, Layers, Pin, Plus } from "lucide-react";
 import ClientReady from "@/components/ClientReady";
 import PageHeader from "@/components/PageHeader";
 import { useTodoay } from "@/lib/store";
@@ -22,7 +22,26 @@ type DragState = {
   threadId: string;
   lane: ThreadLane;
   pointerId: number;
+  startX: number;
+  startY: number;
+  currentX: number;
+  currentY: number;
+  originLeft: number;
+  originTop: number;
+  width: number;
+  height: number;
+  boundsLeft: number;
+  boundsTop: number;
+  boundsWidth: number;
+  boundsHeight: number;
 };
+
+const LONG_PRESS_MS = 500;
+const LONG_PRESS_MOVE_TOLERANCE = 8;
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
 
 function ThreadsScreen() {
   const router = useRouter();
@@ -31,6 +50,14 @@ function ThreadsScreen() {
   const [dragState, setDragState] = useState<DragState | null>(null);
   const draftInputRef = useRef<HTMLInputElement | null>(null);
   const rowRefs = useRef<Record<string, HTMLElement | null>>({});
+  const laneRefs = useRef<Record<ThreadLane, HTMLDivElement | null>>({
+    pinned: null,
+    active: null,
+    archived: null,
+  });
+  const threadCardRef = useRef<HTMLElement | null>(null);
+  const longPressRef = useRef<{ threadId: string; lane: ThreadLane; pointerId: number; timeoutId: number | null; startX: number; startY: number } | null>(null);
+  const suppressClickRef = useRef<string | null>(null);
 
   const pinnedThreads = state.threads
     .filter((thread) => !thread.archived && thread.pinned)
@@ -47,6 +74,19 @@ function ThreadsScreen() {
       draftInputRef.current?.focus();
     }
   }, [draftTitle]);
+
+  const clearLongPress = useCallback(() => {
+    if (longPressRef.current?.timeoutId) {
+      window.clearTimeout(longPressRef.current.timeoutId);
+    }
+    longPressRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      clearLongPress();
+    };
+  }, [clearLongPress]);
 
   const commitDraft = () => {
     const nextTitle = draftTitle?.trim() ?? "";
@@ -137,14 +177,21 @@ function ThreadsScreen() {
 
     const handlePointerMove = (event: PointerEvent) => {
       if (event.pointerId === dragState.pointerId) {
+        setDragState((current) =>
+          current && current.pointerId === event.pointerId
+            ? { ...current, currentX: event.clientX, currentY: event.clientY }
+            : current,
+        );
         moveDraggedThread(event.clientY);
       }
     };
 
     const handlePointerUp = (event: PointerEvent) => {
       if (event.pointerId === dragState.pointerId) {
+        suppressClickRef.current = dragState.threadId;
         setDragState(null);
       }
+      clearLongPress();
     };
 
     window.addEventListener("pointermove", handlePointerMove);
@@ -155,18 +202,71 @@ function ThreadsScreen() {
       window.removeEventListener("pointerup", handlePointerUp);
       window.removeEventListener("pointercancel", handlePointerUp);
     };
-  }, [dragState, moveDraggedThread]);
+  }, [clearLongPress, dragState, moveDraggedThread]);
 
   if (!ready) {
     return <div className="loading-screen">Loading Todoay...</div>;
   }
 
-  const beginDrag = (threadId: string, lane: ThreadLane, event: ReactPointerEvent<HTMLButtonElement>) => {
+  const beginLongPress = (threadId: string, lane: ThreadLane, event: ReactPointerEvent<HTMLElement>) => {
+    if (
+      event.target instanceof HTMLElement &&
+      event.target.closest("button, input, textarea, select")
+    ) {
+      return;
+    }
+
+    clearLongPress();
     event.currentTarget.setPointerCapture(event.pointerId);
-    setDragState({ threadId, lane, pointerId: event.pointerId });
+    longPressRef.current = {
+      threadId,
+      lane,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      timeoutId: window.setTimeout(() => {
+        const rowRect = rowRefs.current[threadId]?.getBoundingClientRect();
+        const cardRect = threadCardRef.current?.getBoundingClientRect();
+        const laneRect = laneRefs.current[lane]?.getBoundingClientRect();
+
+        setDragState({
+          threadId,
+          lane,
+          pointerId: event.pointerId,
+          startX: event.clientX,
+          startY: event.clientY,
+          currentX: event.clientX,
+          currentY: event.clientY,
+          originLeft: (rowRect?.left ?? 0) - (cardRect?.left ?? 0),
+          originTop: (rowRect?.top ?? 0) - (cardRect?.top ?? 0),
+          width: rowRect?.width ?? 0,
+          height: rowRect?.height ?? 72,
+          boundsLeft: ((laneRect?.left ?? cardRect?.left) ?? 0) - (cardRect?.left ?? 0),
+          boundsTop: ((laneRect?.top ?? cardRect?.top) ?? 0) - (cardRect?.top ?? 0),
+          boundsWidth: laneRect?.width ?? cardRect?.width ?? 0,
+          boundsHeight: laneRect?.height ?? cardRect?.height ?? 0,
+        });
+        suppressClickRef.current = threadId;
+      }, LONG_PRESS_MS),
+    };
   };
 
-  const renderThreadRow = (threadId: string, lane: ThreadLane) => {
+  const updateLongPress = (threadId: string, event: ReactPointerEvent<HTMLElement>) => {
+    const pendingLongPress = longPressRef.current;
+
+    if (!pendingLongPress || pendingLongPress.threadId !== threadId || pendingLongPress.pointerId !== event.pointerId) {
+      return;
+    }
+
+    if (
+      Math.abs(event.clientX - pendingLongPress.startX) > LONG_PRESS_MOVE_TOLERANCE ||
+      Math.abs(event.clientY - pendingLongPress.startY) > LONG_PRESS_MOVE_TOLERANCE
+    ) {
+      clearLongPress();
+    }
+  };
+
+  const renderThreadRow = (threadId: string, lane: ThreadLane, renderAsOverlay = false) => {
     const thread = state.threads.find((candidate) => candidate.id === threadId);
     if (!thread) {
       return null;
@@ -174,16 +274,46 @@ function ThreadsScreen() {
 
     const openTaskCount = thread.tasks.filter((task) => !task.completed && task.text.trim() !== "").length;
     const isDragging = dragState?.threadId === thread.id;
+    const isPlaceholder = isDragging && !renderAsOverlay;
 
     return (
       <article
         key={thread.id}
-        className={`thread-list-row${isDragging ? " dragging" : ""}`}
+        className={`thread-list-row${isDragging ? " dragging" : ""}${isPlaceholder ? " dragging-placeholder" : ""}`}
+        style={
+          isPlaceholder
+            ? {
+                height: `${dragState.height}px`,
+              }
+            : undefined
+        }
         ref={(element) => {
-          rowRefs.current[thread.id] = element;
+          if (!renderAsOverlay) {
+            rowRefs.current[thread.id] = element;
+          }
         }}
+        onPointerDown={renderAsOverlay ? undefined : (event) => beginLongPress(thread.id, lane, event)}
+        onPointerMove={renderAsOverlay ? undefined : (event) => updateLongPress(thread.id, event)}
+        onPointerUp={renderAsOverlay ? undefined : clearLongPress}
+        onPointerCancel={renderAsOverlay ? undefined : clearLongPress}
+        onClickCapture={
+          renderAsOverlay
+            ? undefined
+            : (event) => {
+                if (suppressClickRef.current === thread.id) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  suppressClickRef.current = null;
+                }
+              }
+        }
       >
-        <Link href={`/thread?threadId=${thread.id}`} className="thread-list-link">
+        <Link
+          href={`/thread?threadId=${thread.id}`}
+          className="thread-list-link"
+          draggable={false}
+          onDragStart={(event) => event.preventDefault()}
+        >
           <span className="thread-list-title">{thread.title || "Untitled thread"}</span>
           <span className="thread-list-meta">
             {openTaskCount} open {openTaskCount === 1 ? "task" : "tasks"} · Last updated {getLastUpdatedLabel(thread.updatedAt)}
@@ -210,19 +340,28 @@ function ThreadsScreen() {
           >
             {thread.archived ? <ArchiveRestore size={17} /> : <Archive size={17} />}
           </button>
-          <button
-            type="button"
-            className="thread-drag-handle"
-            aria-label={`Reorder ${thread.title || "thread"}`}
-            title="Drag to reorder"
-            onPointerDown={(event) => beginDrag(thread.id, lane, event)}
-          >
-            <GripVertical size={16} />
-          </button>
         </div>
       </article>
     );
   };
+
+  const draggedThread = dragState
+    ? state.threads.find((thread) => thread.id === dragState.threadId) ?? null
+    : null;
+  const dragOffsetX = dragState
+    ? clamp(
+        dragState.currentX - dragState.startX,
+        dragState.boundsLeft - dragState.originLeft,
+        dragState.boundsLeft + Math.max(0, dragState.boundsWidth - dragState.width) - dragState.originLeft,
+      )
+    : 0;
+  const dragOffsetY = dragState
+    ? clamp(
+        dragState.currentY - dragState.startY,
+        dragState.boundsTop - dragState.originTop,
+        dragState.boundsTop + Math.max(0, dragState.boundsHeight - dragState.height) - dragState.originTop,
+      )
+    : 0;
 
   return (
     <div className="app-shell">
@@ -243,13 +382,18 @@ function ThreadsScreen() {
         </button>
       </div>
 
-      <section className="card thread-index-card">
+      <section className="card thread-index-card" ref={threadCardRef}>
         {pinnedThreads.length > 0 ? (
           <>
             <div className="thread-lane-divider">
               <span>Pinned</span>
             </div>
-            <div className="thread-section-list">
+            <div
+              className="thread-section-list"
+              ref={(element) => {
+                laneRefs.current.pinned = element;
+              }}
+            >
               {pinnedThreads.map((thread) => renderThreadRow(thread.id, "pinned"))}
             </div>
           </>
@@ -261,7 +405,12 @@ function ThreadsScreen() {
           </div>
         ) : null}
 
-        <div className="thread-section-list">
+        <div
+          className="thread-section-list"
+          ref={(element) => {
+            laneRefs.current.active = element;
+          }}
+        >
           {draftTitle !== null ? (
             <article className="thread-list-row thread-draft-row">
               <div className="thread-list-link">
@@ -292,10 +441,29 @@ function ThreadsScreen() {
             <div className="thread-archive-divider">
               <span>Archived</span>
             </div>
-            <div className="thread-section-list">
+            <div
+              className="thread-section-list"
+              ref={(element) => {
+                laneRefs.current.archived = element;
+              }}
+            >
               {archivedThreads.map((thread) => renderThreadRow(thread.id, "archived"))}
             </div>
           </>
+        ) : null}
+        {dragState && draggedThread ? (
+          <div
+            className="thread-drag-overlay"
+            style={{
+              left: `${dragState.originLeft}px`,
+              top: `${dragState.originTop}px`,
+              width: `${dragState.width}px`,
+              minHeight: `${dragState.height}px`,
+              transform: `translate(${dragOffsetX}px, ${dragOffsetY}px) scale(1.02)`,
+            }}
+          >
+            {renderThreadRow(draggedThread.id, dragState.lane, true)}
+          </div>
         ) : null}
       </section>
     </div>

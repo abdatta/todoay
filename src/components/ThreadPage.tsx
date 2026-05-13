@@ -10,6 +10,7 @@ import {
   CalendarClock,
   Layers,
   GripVertical,
+  Pencil,
   Plus,
   Trash2,
 } from "lucide-react";
@@ -60,11 +61,14 @@ function ThreadScreen({ threadId }: { threadId: string }) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [openScheduleMenuId, setOpenScheduleMenuId] = useState<string | null>(null);
   const [scheduleTaskId, setScheduleTaskId] = useState<string | null>(null);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState<string | null>(null);
   const [menuViewDate, setMenuViewDate] = useState<Date>(parseISO(today));
   const menuRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const scheduleMenuRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const pendingFocusRef = useRef<{ id: string; mode: "selectAll" | "cursorEnd" } | null>(null);
   const inputRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
+  const titleInputRef = useRef<HTMLInputElement | null>(null);
 
   const thread = state.threads.find((candidate) => candidate.id === threadId) ?? null;
   const openTasks = thread?.tasks.filter((task) => !task.completed) ?? [];
@@ -121,6 +125,13 @@ function ThreadScreen({ threadId }: { threadId: string }) {
     };
   }, [openMenuId, openScheduleMenuId]);
 
+  useEffect(() => {
+    if (isEditingTitle) {
+      titleInputRef.current?.focus();
+      titleInputRef.current?.select();
+    }
+  }, [isEditingTitle]);
+
   if (!ready) {
     return <div className="loading-screen">Loading Todoay...</div>;
   }
@@ -140,6 +151,55 @@ function ThreadScreen({ threadId }: { threadId: string }) {
   const scheduleTask = scheduleTaskId
     ? thread.tasks.find((task) => task.id === scheduleTaskId) ?? null
     : null;
+  const titleValue = titleDraft ?? thread.title;
+  const titleWidthCh = Math.min(34, Math.max(10, titleValue.length + 5));
+
+  const commitTitleDraft = () => {
+    if (!isEditingTitle) {
+      setTitleDraft(null);
+      return;
+    }
+
+    const nextTitle = (titleDraft ?? thread.title).trim();
+    if (!nextTitle) {
+      setTitleDraft(null);
+      setIsEditingTitle(false);
+      return;
+    }
+
+    if (nextTitle !== thread.title) {
+      updateThread(thread.id, { title: nextTitle });
+    }
+    setTitleDraft(null);
+    setIsEditingTitle(false);
+  };
+
+  const startEditingTitle = () => {
+    setTitleDraft(thread.title);
+    setIsEditingTitle(true);
+  };
+
+  const handleDeleteThread = () => {
+    const totalTaskCount = thread.tasks.length;
+    const completedTaskCount = thread.tasks.filter((task) => task.completed).length;
+    const taskWarning = totalTaskCount > 0
+      ? ` This deletes its ${totalTaskCount} ${totalTaskCount === 1 ? "task" : "tasks"}${completedTaskCount > 0 ? `, including ${completedTaskCount} completed ${completedTaskCount === 1 ? "task" : "tasks"}` : ""}.`
+      : "";
+    const completedWarning = completedTaskCount > 0
+      ? " Archive instead to keep them."
+      : totalTaskCount > 0
+        ? ` Archive instead to keep ${totalTaskCount === 1 ? "it" : "them"}.`
+        : "";
+    const confirmed = window.confirm(
+      `Delete "${thread.title || "Untitled thread"}"?${taskWarning}${completedWarning} Deletion cannot be undone.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    deleteThread(thread.id);
+    router.push("/threads");
+  };
 
   const handleAddTask = () => {
     if (isReadOnly) {
@@ -358,42 +418,66 @@ function ThreadScreen({ threadId }: { threadId: string }) {
         <PageHeader
           title="Threads"
           icon={<Layers size={30} color="var(--accent-color)" />}
-          actions={
-            <>
-              <button
-                type="button"
-                className="btn-icon"
-                aria-label={thread.archived ? "Restore thread" : "Archive thread"}
-                title={thread.archived ? "Restore thread" : "Archive thread"}
-                onClick={() => updateThread(thread.id, { archived: !thread.archived })}
-              >
-                {thread.archived ? <ArchiveRestore size={17} /> : <Archive size={17} />}
-              </button>
-              <button
-                type="button"
-                className="btn-icon"
-                aria-label="Delete thread"
-                title="Delete thread"
-                disabled={isReadOnly}
-                onClick={() => {
-                  deleteThread(thread.id);
-                  router.push("/threads");
-                }}
-              >
-                <Trash2 size={17} />
-              </button>
-            </>
-          }
         />
 
-        <div className="thread-selector-container">
+        <div className="thread-detail-toolbar">
           <button
             type="button"
-            className="thread-picker-static"
-            aria-label="Back to threads"
-            onClick={() => router.push("/threads")}
+            className="btn-icon thread-detail-toolbar-button"
+            aria-label={thread.archived ? "Restore thread" : "Archive thread"}
+            title={thread.archived ? "Restore thread" : "Archive thread"}
+            onClick={() => updateThread(thread.id, { archived: !thread.archived })}
           >
-            <span>{thread.title || "Untitled thread"}</span>
+            {thread.archived ? <ArchiveRestore size={17} /> : <Archive size={17} />}
+          </button>
+          {isEditingTitle ? (
+            <input
+              ref={titleInputRef}
+              className="thread-picker-static thread-title-input"
+              aria-label="Thread title"
+              style={{ width: `clamp(132px, ${titleWidthCh}ch, min(360px, calc(100vw - 144px)))` }}
+              value={titleValue}
+              onChange={(event) => setTitleDraft(event.target.value)}
+              onBlur={commitTitleDraft}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  event.currentTarget.blur();
+                }
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  setTitleDraft(null);
+                  setIsEditingTitle(false);
+                  event.currentTarget.blur();
+                }
+              }}
+            />
+          ) : (
+            <button
+              type="button"
+              className="thread-picker-static thread-title-button"
+              aria-label="Back to threads"
+              style={{ width: `clamp(132px, ${titleWidthCh}ch, min(360px, calc(100vw - 144px)))` }}
+              onClick={() => router.push("/threads")}
+            >
+              <span>{titleValue || "Untitled thread"}</span>
+            </button>
+          )}
+          <button
+            type="button"
+            className={`btn-icon thread-detail-toolbar-button${isEditingTitle ? " active" : ""}`}
+            aria-label={isEditingTitle ? "Save thread name" : "Edit thread name"}
+            title={isEditingTitle ? "Save thread name" : "Edit thread name"}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => {
+              if (isEditingTitle) {
+                commitTitleDraft();
+              } else {
+                startEditingTitle();
+              }
+            }}
+          >
+            <Pencil size={17} />
           </button>
         </div>
 
@@ -424,6 +508,12 @@ function ThreadScreen({ threadId }: { threadId: string }) {
             </div>
           ) : null}
         </section>
+
+        <div className="thread-delete-row">
+          <button type="button" className="thread-delete-button" onClick={handleDeleteThread}>
+            Delete thread
+          </button>
+        </div>
       </div>
 
       {scheduleTask && !isReadOnly ? (

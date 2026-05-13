@@ -669,6 +669,43 @@ input {
   white-space: nowrap;
 }
 
+.thread-detail-toolbar {
+  width: min(100%, calc(100vw - 48px));
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 42px;
+  align-items: center;
+  gap: 14px;
+  margin: 0 auto 32px;
+}
+
+.thread-detail-toolbar-button {
+  justify-self: end;
+}
+
+.thread-detail-toolbar-button:first-child {
+  justify-self: start;
+}
+
+.thread-detail-toolbar-button.active {
+  color: var(--accent-color);
+  border-color: color-mix(in srgb, var(--accent-color) 34%, var(--border-subtle));
+  background: color-mix(in srgb, var(--accent-soft) 72%, transparent);
+}
+
+.thread-title-input,
+.thread-title-button {
+  min-height: 52px;
+  justify-self: center;
+  max-width: min(360px, calc(100vw - 144px));
+  border: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--card-bg) 78%, transparent);
+  text-align: center;
+}
+
+.thread-title-button {
+  cursor: pointer;
+}
+
 .datepicker-month-track {
   will-change: transform;
 }
@@ -835,7 +872,7 @@ input {
 
 .task-line {
   display: grid;
-  grid-template-columns: auto 1fr auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
   gap: 12px;
   align-items: center;
   min-height: 60px;
@@ -908,19 +945,6 @@ input {
   white-space: nowrap;
 }
 
-.thread-inline-link {
-  width: fit-content;
-  max-width: 100%;
-  color: var(--accent-color);
-  font-size: 0.78rem;
-  font-weight: 700;
-  line-height: 1.3;
-}
-
-.thread-inline-link:hover {
-  color: var(--text-main);
-}
-
 .thread-task-schedule-indicator {
   width: 28px;
   height: 28px;
@@ -937,6 +961,58 @@ input {
 .thread-task-schedule-indicator:hover {
   color: var(--text-main);
   border-color: color-mix(in srgb, var(--accent-color) 34%, var(--border-subtle));
+}
+
+.date-task-thread-menu {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.date-task-thread-indicator {
+  color: var(--accent-color);
+  background: color-mix(in srgb, var(--accent-color) 10%, rgba(255, 255, 255, 0.045));
+  border-color: color-mix(in srgb, var(--accent-color) 24%, var(--border-subtle));
+}
+
+.date-task-thread-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  z-index: 12;
+  min-width: 132px;
+  max-width: 220px;
+  display: flex;
+  padding: 6px;
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle);
+  background: #242321;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35), var(--glass-shadow);
+  transform: translateX(-50%);
+}
+
+.date-task-thread-link {
+  width: 100%;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  border-radius: 9px;
+  color: var(--accent-color);
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.2;
+  overflow: hidden;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.date-task-thread-link:hover,
+.date-task-thread-link:focus-visible {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-main);
+  outline: none;
 }
 
 .thread-task-schedule-menu {
@@ -1176,6 +1252,43 @@ input {
   transform: translateY(-4px);
 }
 
+.thread-delete-row {
+  display: flex;
+  justify-content: center;
+  margin: 48px 0 12px;
+}
+
+.thread-delete-button {
+  min-height: 42px;
+  padding: 0 22px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, #ff8f7d 42%, var(--border-subtle));
+  color: #ffaaa0;
+  background:
+    linear-gradient(180deg, rgba(98, 45, 38, 0.38), rgba(50, 25, 22, 0.22));
+  box-shadow:
+    0 0 0 1px rgba(255, 143, 125, 0.05),
+    0 12px 34px -18px rgba(255, 99, 79, 0.75),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  font-size: 0.95rem;
+  font-weight: 700;
+  transition: var(--transition-smooth);
+}
+
+.thread-delete-button:hover,
+.thread-delete-button:focus-visible {
+  color: #ffd0ca;
+  border-color: color-mix(in srgb, #ff8f7d 62%, var(--border-subtle));
+  background:
+    linear-gradient(180deg, rgba(120, 52, 43, 0.48), rgba(62, 27, 23, 0.3));
+  box-shadow:
+    0 0 0 1px rgba(255, 143, 125, 0.08),
+    0 16px 42px -18px rgba(255, 99, 79, 0.9),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  outline: none;
+  transform: translateY(-1px);
+}
+
 .task-line-menu-meta {
   margin-top: 4px;
   padding: 6px 10px 4px;
@@ -1314,6 +1427,8 @@ input {
 
 .thread-index-card {
   padding: 8px 0 12px;
+  position: relative;
+  overflow: visible;
 }
 
 .thread-create-row {
@@ -1368,6 +1483,9 @@ input {
   align-items: center;
   gap: 14px;
   padding: 0 20px;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
   transition:
     background-color 0.18s ease,
     box-shadow 0.18s ease,
@@ -1381,6 +1499,34 @@ input {
 .thread-list-row.dragging {
   background: color-mix(in srgb, var(--accent-soft) 36%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-color) 24%, transparent);
+  cursor: grabbing;
+}
+
+.thread-list-row.dragging-placeholder {
+  background: transparent;
+  box-shadow: none;
+  opacity: 0.2;
+}
+
+.thread-list-row.dragging-placeholder > * {
+  visibility: hidden;
+}
+
+.thread-drag-overlay {
+  position: absolute;
+  z-index: 30;
+  pointer-events: none;
+  transform-origin: center;
+  transition: transform 0.08s ease-out;
+}
+
+.thread-drag-overlay .thread-list-row {
+  border-radius: var(--border-radius-md);
+  background: var(--card-bg);
+  box-shadow:
+    0 18px 34px -22px rgba(0, 0, 0, 0.5),
+    0 0 0 1px color-mix(in srgb, var(--accent-color) 24%, transparent),
+    0 0 20px -12px color-mix(in srgb, var(--accent-color) 42%, transparent);
 }
 
 .thread-list-link {
@@ -1438,33 +1584,6 @@ input {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.thread-drag-handle {
-  width: 32px;
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 10px;
-  color: var(--text-muted);
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid transparent;
-  cursor: grab;
-  touch-action: none;
-  transition: var(--transition-smooth);
-}
-
-.thread-drag-handle:hover,
-.thread-drag-handle:focus-visible {
-  color: var(--text-main);
-  background: rgba(255, 255, 255, 0.06);
-  border-color: color-mix(in srgb, var(--accent-color) 24%, transparent);
-  outline: none;
-}
-
-.thread-drag-handle:active {
-  cursor: grabbing;
 }
 
 .thread-lane-divider,
@@ -2086,24 +2205,6 @@ input {
 }
 
 @media (max-width: 520px) {
-  .nav-link {
-    flex: 1 1 0;
-    min-width: 0;
-  }
-
-  .nav-link span {
-    font-size: 0.72rem;
-  }
-
-  .nav-links {
-    gap: 22px;
-  }
-
-  .thread-selector-container {
-    width: 100%;
-    justify-content: space-between;
-  }
-
   .thread-picker-static {
     width: clamp(116px, 42vw, 168px);
   }
