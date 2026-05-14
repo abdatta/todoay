@@ -26,6 +26,7 @@ const WHEEL_GESTURE_DISTANCE_MULTIPLIER = 1.4;
 const CALENDAR_VISIBLE_WEEKS = 6;
 const CALENDAR_COLUMN_GAP = 4;
 const CALENDAR_ROW_GAP = 4;
+const INTERACTIVE_SELECTOR = "button, input, textarea, select, a";
 
 type DateProgressMap = Record<string, {
   completed: number;
@@ -439,6 +440,10 @@ export function DatePickerPopupContent({
 
   const handleMonthPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.pointerType === "mouse" && event.button !== 0) {
+      return;
+    }
+
+    if (event.pointerType === "mouse" && event.target instanceof Element && event.target.closest(INTERACTIVE_SELECTOR)) {
       return;
     }
 
