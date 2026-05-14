@@ -1485,7 +1485,7 @@ input {
   padding: 0 20px;
   cursor: grab;
   user-select: none;
-  touch-action: none;
+  touch-action: pan-y;
   transition:
     background-color 0.18s ease,
     box-shadow 0.18s ease,

@@ -177,6 +177,9 @@ function ThreadsScreen() {
 
     const handlePointerMove = (event: PointerEvent) => {
       if (event.pointerId === dragState.pointerId) {
+        if (event.cancelable) {
+          event.preventDefault();
+        }
         setDragState((current) =>
           current && current.pointerId === event.pointerId
             ? { ...current, currentX: event.clientX, currentY: event.clientY }
@@ -217,14 +220,25 @@ function ThreadsScreen() {
     }
 
     clearLongPress();
-    event.currentTarget.setPointerCapture(event.pointerId);
+    const dragTarget = event.currentTarget;
+    const pointerId = event.pointerId;
+    const startX = event.clientX;
+    const startY = event.clientY;
     longPressRef.current = {
       threadId,
       lane,
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
+      pointerId,
+      startX,
+      startY,
       timeoutId: window.setTimeout(() => {
+        try {
+          if (dragTarget.isConnected) {
+            dragTarget.setPointerCapture(pointerId);
+          }
+        } catch {
+          return;
+        }
+
         const rowRect = rowRefs.current[threadId]?.getBoundingClientRect();
         const cardRect = threadCardRef.current?.getBoundingClientRect();
         const laneRect = laneRefs.current[lane]?.getBoundingClientRect();
@@ -232,11 +246,11 @@ function ThreadsScreen() {
         setDragState({
           threadId,
           lane,
-          pointerId: event.pointerId,
-          startX: event.clientX,
-          startY: event.clientY,
-          currentX: event.clientX,
-          currentY: event.clientY,
+          pointerId,
+          startX,
+          startY,
+          currentX: startX,
+          currentY: startY,
           originLeft: (rowRect?.left ?? 0) - (cardRect?.left ?? 0),
           originTop: (rowRect?.top ?? 0) - (cardRect?.top ?? 0),
           width: rowRect?.width ?? 0,
