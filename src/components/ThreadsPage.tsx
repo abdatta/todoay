@@ -11,12 +11,20 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { format, isToday, isYesterday, parseISO } from "date-fns";
-import { Archive, ArchiveRestore, Layers, Pin, Plus } from "lucide-react";
+import { Archive, ArchiveRestore, ChevronDown, ChevronRight, Layers, Pin, Plus } from "lucide-react";
 import ClientReady from "@/components/ClientReady";
 import PageHeader from "@/components/PageHeader";
 import { useTodoay } from "@/lib/store";
+import type { ThreadRecord } from "@/lib/types";
 
-type ThreadLane = "pinned" | "active" | "archived";
+type ThreadLane = "pinned" | "active" | "inactive" | "archived";
+type ThreadSection = {
+  lane: ThreadLane;
+  label: string;
+  threads: ThreadRecord[];
+  hasDraft?: boolean;
+  collapsible?: boolean;
+};
 
 type DragState = {
   threadId: string;
@@ -48,11 +56,13 @@ function ThreadsScreen() {
   const { ready, state, addThread, updateThread, reorderThread } = useTodoay();
   const [draftTitle, setDraftTitle] = useState<string | null>(null);
   const [dragState, setDragState] = useState<DragState | null>(null);
+  const [isArchiveExpanded, setIsArchiveExpanded] = useState(false);
   const draftInputRef = useRef<HTMLInputElement | null>(null);
   const rowRefs = useRef<Record<string, HTMLElement | null>>({});
   const laneRefs = useRef<Record<ThreadLane, HTMLDivElement | null>>({
     pinned: null,
     active: null,
+    inactive: null,
     archived: null,
   });
   const threadCardRef = useRef<HTMLElement | null>(null);
@@ -64,7 +74,10 @@ function ThreadsScreen() {
     .filter((thread) => !thread.archived && thread.pinned)
     .sort((left, right) => left.sortOrder - right.sortOrder || left.id.localeCompare(right.id));
   const activeThreads = state.threads
-    .filter((thread) => !thread.archived && !thread.pinned)
+    .filter((thread) => !thread.archived && !thread.pinned && thread.tasks.length > 0)
+    .sort((left, right) => left.sortOrder - right.sortOrder || left.id.localeCompare(right.id));
+  const inactiveThreads = state.threads
+    .filter((thread) => !thread.archived && !thread.pinned && thread.tasks.length === 0)
     .sort((left, right) => left.sortOrder - right.sortOrder || left.id.localeCompare(right.id));
   const archivedThreads = state.threads
     .filter((thread) => thread.archived)
@@ -160,8 +173,11 @@ function ThreadsScreen() {
     if (lane === "archived") {
       return archivedThreads;
     }
+    if (lane === "inactive") {
+      return inactiveThreads;
+    }
     return activeThreads;
-  }, [activeThreads, archivedThreads, pinnedThreads]);
+  }, [activeThreads, archivedThreads, inactiveThreads, pinnedThreads]);
 
   const moveDraggedThread = useCallback((clientY: number) => {
     if (!dragState) {
@@ -322,13 +338,14 @@ function ThreadsScreen() {
     }
 
     const openTaskCount = thread.tasks.filter((task) => !task.completed && task.text.trim() !== "").length;
+    const hasNoTasks = thread.tasks.length === 0;
     const isDragging = dragState?.threadId === thread.id;
     const isPlaceholder = isDragging && !renderAsOverlay;
 
     return (
       <article
         key={thread.id}
-        className={`thread-list-row${isDragging ? " dragging" : ""}${isPlaceholder ? " dragging-placeholder" : ""}`}
+        className={`thread-list-row${lane === "inactive" ? " inactive" : ""}${lane === "archived" ? " archived" : ""}${hasNoTasks ? " empty" : ""}${isDragging ? " dragging" : ""}${isPlaceholder ? " dragging-placeholder" : ""}`}
         style={
           isPlaceholder
             ? {
@@ -427,6 +444,82 @@ function ThreadsScreen() {
         dragState.boundsTop + Math.max(0, dragState.boundsHeight - dragState.height) - dragState.originTop,
       )
     : 0;
+  const allSections: ThreadSection[] = [
+    { lane: "pinned", label: "Pinned", threads: pinnedThreads },
+    { lane: "active", label: "Active", threads: activeThreads, hasDraft: draftTitle !== null },
+    { lane: "inactive", label: "Inactive", threads: inactiveThreads },
+    { lane: "archived", label: "Archived", threads: archivedThreads, collapsible: true },
+  ];
+  const sections = allSections.filter((section) => section.threads.length > 0 || section.hasDraft);
+  const firstSectionLane = sections[0]?.lane ?? null;
+  const hasVisibleContent = sections.length > 0;
+
+  const renderSectionHeader = (section: (typeof sections)[number]) => {
+    if (section.lane === firstSectionLane && !section.collapsible) {
+      return null;
+    }
+
+    if (section.collapsible) {
+      const ArchiveIcon = isArchiveExpanded ? ChevronDown : ChevronRight;
+      return (
+        <button
+          type="button"
+          className="thread-archive-divider"
+          aria-expanded={isArchiveExpanded}
+          onClick={() => setIsArchiveExpanded((current) => !current)}
+        >
+          <span>
+            <ArchiveIcon size={15} />
+            {section.label}
+          </span>
+        </button>
+      );
+    }
+
+    return (
+      <div className="thread-lane-divider">
+        <span>{section.label}</span>
+      </div>
+    );
+  };
+
+  const renderSection = (section: (typeof sections)[number]) => {
+    const isArchivedCollapsed = section.lane === "archived" && !isArchiveExpanded;
+
+    return (
+      <div key={section.lane}>
+        {renderSectionHeader(section)}
+        {isArchivedCollapsed ? null : (
+          <div
+            className="thread-section-list"
+            ref={(element) => {
+              laneRefs.current[section.lane] = element;
+            }}
+          >
+            {section.hasDraft ? (
+              <article className="thread-list-row thread-draft-row">
+                <div className="thread-list-link">
+                  <input
+                    ref={draftInputRef}
+                    className="thread-draft-input"
+                    value={draftTitle ?? ""}
+                    placeholder="Thread title"
+                    aria-label="New thread title"
+                    onChange={(event) => setDraftTitle(event.target.value)}
+                    onBlur={commitDraft}
+                    onKeyDown={handleDraftKeyDown}
+                  />
+                  <span className="thread-list-meta">0 open tasks</span>
+                </div>
+              </article>
+            ) : null}
+
+            {section.threads.map((thread) => renderThreadRow(thread.id, section.lane))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="app-shell">
@@ -448,74 +541,11 @@ function ThreadsScreen() {
       </div>
 
       <section className="card thread-index-card" ref={threadCardRef}>
-        {pinnedThreads.length > 0 ? (
-          <>
-            <div className="thread-lane-divider">
-              <span>Pinned</span>
-            </div>
-            <div
-              className="thread-section-list"
-              ref={(element) => {
-                laneRefs.current.pinned = element;
-              }}
-            >
-              {pinnedThreads.map((thread) => renderThreadRow(thread.id, "pinned"))}
-            </div>
-          </>
-        ) : null}
-
-        {pinnedThreads.length > 0 ? (
-          <div className="thread-lane-divider">
-            <span>Active</span>
-          </div>
-        ) : null}
-
-        <div
-          className="thread-section-list"
-          ref={(element) => {
-            laneRefs.current.active = element;
-          }}
-        >
-          {draftTitle !== null ? (
-            <article className="thread-list-row thread-draft-row">
-              <div className="thread-list-link">
-                <input
-                  ref={draftInputRef}
-                  className="thread-draft-input"
-                  value={draftTitle}
-                  placeholder="Thread title"
-                  aria-label="New thread title"
-                  onChange={(event) => setDraftTitle(event.target.value)}
-                  onBlur={commitDraft}
-                  onKeyDown={handleDraftKeyDown}
-                />
-                <span className="thread-list-meta">0 open tasks</span>
-              </div>
-            </article>
-          ) : null}
-
-          {activeThreads.length === 0 && draftTitle === null ? (
-            <div className="empty-state thread-empty-state">No active threads yet.</div>
-          ) : (
-            activeThreads.map((thread) => renderThreadRow(thread.id, "active"))
-          )}
-        </div>
-
-        {archivedThreads.length > 0 ? (
-          <>
-            <div className="thread-archive-divider">
-              <span>Archived</span>
-            </div>
-            <div
-              className="thread-section-list"
-              ref={(element) => {
-                laneRefs.current.archived = element;
-              }}
-            >
-              {archivedThreads.map((thread) => renderThreadRow(thread.id, "archived"))}
-            </div>
-          </>
-        ) : null}
+        {hasVisibleContent ? (
+          sections.map(renderSection)
+        ) : (
+          <div className="empty-state thread-empty-state">No threads yet.</div>
+        )}
         {dragState && draggedThread ? (
           <div
             className="thread-drag-overlay"

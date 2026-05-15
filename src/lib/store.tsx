@@ -85,6 +85,16 @@ const createId = () => {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 };
 
+const getThreadReorderLane = (thread: ThreadRecord) => {
+  if (thread.archived) {
+    return "archived";
+  }
+  if (thread.pinned) {
+    return "pinned";
+  }
+  return thread.tasks.length === 0 ? "inactive" : "active";
+};
+
 const createLocalSyncMeta = (): LocalSyncMeta => ({
   clientId: createId(),
   mutationCounter: 0,
@@ -1437,15 +1447,14 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
           return current;
         }
 
-        const inSameLane =
-          sourceThread.archived === targetThread.archived &&
-          sourceThread.pinned === targetThread.pinned;
+        const sourceLane = getThreadReorderLane(sourceThread);
+        const inSameLane = sourceLane === getThreadReorderLane(targetThread);
         if (!inSameLane) {
           return current;
         }
 
         const laneThreads = current.threads
-          .filter((thread) => thread.archived === sourceThread.archived && thread.pinned === sourceThread.pinned)
+          .filter((thread) => getThreadReorderLane(thread) === sourceLane)
           .sort((left, right) => left.sortOrder - right.sortOrder || left.id.localeCompare(right.id));
         const movingIndex = laneThreads.findIndex((thread) => thread.id === threadId);
         const rawTargetIndex = laneThreads.findIndex((thread) => thread.id === targetThreadId);

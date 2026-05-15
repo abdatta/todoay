@@ -1515,6 +1515,15 @@ input {
   visibility: hidden;
 }
 
+.thread-list-row.inactive .thread-list-title,
+.thread-list-row.archived .thread-list-title {
+  color: color-mix(in srgb, var(--text-main) 36%, var(--text-muted));
+}
+
+.thread-list-row.empty .thread-list-title {
+  font-weight: 400;
+}
+
 .thread-drag-overlay {
   position: absolute;
   z-index: 30;
@@ -1597,11 +1606,19 @@ input {
   position: relative;
   display: flex;
   justify-content: center;
+  width: calc(100% - 40px);
   margin: 8px 20px 4px;
+  border: 0;
+  padding: 0;
   color: var(--text-muted);
+  background: transparent;
   font-size: 0.82rem;
   font-weight: 700;
   text-transform: uppercase;
+}
+
+.thread-archive-divider {
+  cursor: pointer;
 }
 
 .thread-lane-divider::before,
@@ -1619,8 +1636,17 @@ input {
 .thread-archive-divider span {
   position: relative;
   z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   padding: 0 12px;
   background: var(--card-bg);
+}
+
+.thread-archive-divider:hover,
+.thread-archive-divider:focus-visible {
+  color: var(--text-main);
+  outline: none;
 }
 
 .thread-empty-state {
