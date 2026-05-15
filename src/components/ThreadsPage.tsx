@@ -58,6 +58,7 @@ function ThreadsScreen() {
   const threadCardRef = useRef<HTMLElement | null>(null);
   const longPressRef = useRef<{ threadId: string; lane: ThreadLane; pointerId: number; timeoutId: number | null; startX: number; startY: number } | null>(null);
   const suppressClickRef = useRef<string | null>(null);
+  const scrollLockCleanupRef = useRef<(() => void) | null>(null);
 
   const pinnedThreads = state.threads
     .filter((thread) => !thread.archived && thread.pinned)
@@ -82,11 +83,38 @@ function ThreadsScreen() {
     longPressRef.current = null;
   }, []);
 
+  const lockDragScroll = useCallback(() => {
+    if (scrollLockCleanupRef.current) {
+      return;
+    }
+
+    const previousBodyOverflow = document.body.style.overflow;
+    const touchMoveOptions: AddEventListenerOptions = { passive: false };
+    const preventTouchScroll = (event: TouchEvent) => {
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+    };
+
+    document.body.style.overflow = "hidden";
+    window.addEventListener("touchmove", preventTouchScroll, touchMoveOptions);
+    scrollLockCleanupRef.current = () => {
+      document.body.style.overflow = previousBodyOverflow;
+      window.removeEventListener("touchmove", preventTouchScroll, touchMoveOptions);
+    };
+  }, []);
+
+  const unlockDragScroll = useCallback(() => {
+    scrollLockCleanupRef.current?.();
+    scrollLockCleanupRef.current = null;
+  }, []);
+
   useEffect(() => {
     return () => {
       clearLongPress();
+      unlockDragScroll();
     };
-  }, [clearLongPress]);
+  }, [clearLongPress, unlockDragScroll]);
 
   const commitDraft = () => {
     const nextTitle = draftTitle?.trim() ?? "";
@@ -193,6 +221,7 @@ function ThreadsScreen() {
       if (event.pointerId === dragState.pointerId) {
         suppressClickRef.current = dragState.threadId;
         setDragState(null);
+        unlockDragScroll();
       }
       clearLongPress();
     };
@@ -205,7 +234,7 @@ function ThreadsScreen() {
       window.removeEventListener("pointerup", handlePointerUp);
       window.removeEventListener("pointercancel", handlePointerUp);
     };
-  }, [clearLongPress, dragState, moveDraggedThread]);
+  }, [clearLongPress, dragState, moveDraggedThread, unlockDragScroll]);
 
   if (!ready) {
     return <div className="loading-screen">Loading Todoay...</div>;
@@ -242,6 +271,8 @@ function ThreadsScreen() {
         } catch {
           return;
         }
+
+        lockDragScroll();
 
         const rowRect = rowRefs.current[threadId]?.getBoundingClientRect();
         const cardRect = threadCardRef.current?.getBoundingClientRect();
