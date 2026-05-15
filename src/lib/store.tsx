@@ -92,7 +92,8 @@ const getThreadReorderLane = (thread: ThreadRecord) => {
   if (thread.pinned) {
     return "pinned";
   }
-  return thread.tasks.length === 0 ? "inactive" : "active";
+  const openTaskCount = thread.tasks.filter((task) => !task.completed && task.text.trim() !== "").length;
+  return openTaskCount === 0 ? "inactive" : "active";
 };
 
 const createLocalSyncMeta = (): LocalSyncMeta => ({

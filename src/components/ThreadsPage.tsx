@@ -47,6 +47,9 @@ type DragState = {
 const LONG_PRESS_MS = 500;
 const LONG_PRESS_MOVE_TOLERANCE = 8;
 
+const getOpenThreadTaskCount = (thread: ThreadRecord) =>
+  thread.tasks.filter((task) => !task.completed && task.text.trim() !== "").length;
+
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
@@ -74,10 +77,10 @@ function ThreadsScreen() {
     .filter((thread) => !thread.archived && thread.pinned)
     .sort((left, right) => left.sortOrder - right.sortOrder || left.id.localeCompare(right.id));
   const activeThreads = state.threads
-    .filter((thread) => !thread.archived && !thread.pinned && thread.tasks.length > 0)
+    .filter((thread) => !thread.archived && !thread.pinned && getOpenThreadTaskCount(thread) > 0)
     .sort((left, right) => left.sortOrder - right.sortOrder || left.id.localeCompare(right.id));
   const inactiveThreads = state.threads
-    .filter((thread) => !thread.archived && !thread.pinned && thread.tasks.length === 0)
+    .filter((thread) => !thread.archived && !thread.pinned && getOpenThreadTaskCount(thread) === 0)
     .sort((left, right) => left.sortOrder - right.sortOrder || left.id.localeCompare(right.id));
   const archivedThreads = state.threads
     .filter((thread) => thread.archived)
@@ -337,15 +340,15 @@ function ThreadsScreen() {
       return null;
     }
 
-    const openTaskCount = thread.tasks.filter((task) => !task.completed && task.text.trim() !== "").length;
-    const hasNoTasks = thread.tasks.length === 0;
+    const openTaskCount = getOpenThreadTaskCount(thread);
+    const hasNoOpenTasks = openTaskCount === 0;
     const isDragging = dragState?.threadId === thread.id;
     const isPlaceholder = isDragging && !renderAsOverlay;
 
     return (
       <article
         key={thread.id}
-        className={`thread-list-row${lane === "inactive" ? " inactive" : ""}${lane === "archived" ? " archived" : ""}${hasNoTasks ? " empty" : ""}${isDragging ? " dragging" : ""}${isPlaceholder ? " dragging-placeholder" : ""}`}
+        className={`thread-list-row${lane === "inactive" ? " inactive" : ""}${lane === "archived" ? " archived" : ""}${hasNoOpenTasks ? " empty" : ""}${isDragging ? " dragging" : ""}${isPlaceholder ? " dragging-placeholder" : ""}`}
         style={
           isPlaceholder
             ? {
