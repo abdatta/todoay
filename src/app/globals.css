@@ -1485,6 +1485,8 @@ input {
   padding: 0 20px;
   cursor: grab;
   user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
   touch-action: pan-y;
   transition:
     background-color 0.18s ease,
@@ -1535,6 +1537,8 @@ input {
   flex-direction: column;
   gap: 3px;
   padding: 14px 0;
+  -webkit-user-drag: none;
+  -webkit-touch-callout: none;
 }
 
 .thread-list-title {

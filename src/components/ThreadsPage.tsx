@@ -212,6 +212,10 @@ function ThreadsScreen() {
   }
 
   const beginLongPress = (threadId: string, lane: ThreadLane, event: ReactPointerEvent<HTMLElement>) => {
+    if (!event.isPrimary || event.button !== 0) {
+      return;
+    }
+
     if (
       event.target instanceof HTMLElement &&
       event.target.closest("button, input, textarea, select")
@@ -310,6 +314,22 @@ function ThreadsScreen() {
         onPointerMove={renderAsOverlay ? undefined : (event) => updateLongPress(thread.id, event)}
         onPointerUp={renderAsOverlay ? undefined : clearLongPress}
         onPointerCancel={renderAsOverlay ? undefined : clearLongPress}
+        onContextMenuCapture={
+          renderAsOverlay
+            ? undefined
+            : (event) => {
+                if (
+                  event.target instanceof HTMLElement &&
+                  event.target.closest("button, input, textarea, select")
+                ) {
+                  return;
+                }
+
+                if (longPressRef.current?.threadId === thread.id || dragState?.threadId === thread.id) {
+                  event.preventDefault();
+                }
+              }
+        }
         onClickCapture={
           renderAsOverlay
             ? undefined
