@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type FormEvent } from "react";
 import Link from "next/link";
 import { format, isToday, isTomorrow, isYesterday, parseISO } from "date-fns";
-import { Plus, GripVertical, Trash2, Copy, CheckSquare2, ChevronsRight, Layers } from "lucide-react";
+import { Plus, GripVertical, Trash2, Copy, CheckSquare2, ChevronsRight, Layers, X } from "lucide-react";
 import BacklogTaskList from "@/components/BacklogPage";
 import ClientReady from "@/components/ClientReady";
 import { DatePickerPopupContent } from "@/components/CustomDatePicker";
@@ -83,6 +83,7 @@ function TasksScreen() {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [openThreadMenuId, setOpenThreadMenuId] = useState<string | null>(null);
   const [menuDateAction, setMenuDateAction] = useState<MenuDateAction | null>(null);
+  const [menuThreadTodoId, setMenuThreadTodoId] = useState<string | null>(null);
   const [menuViewDate, setMenuViewDate] = useState<Date>(parseISO(today));
   const [dragState, setDragState] = useState<DragState | null>(null);
   const pendingFocusRef = useRef<{ id: string; mode: "selectAll" | "cursorEnd" } | null>(null);
@@ -105,6 +106,7 @@ function TasksScreen() {
     copyTodoToDate,
     copyTodoReferenceToDate,
     moveTodoReferenceToDate,
+    addTodoToThread,
     getVisibleTodos,
   } = useTodoay();
 
@@ -124,6 +126,17 @@ function TasksScreen() {
         }),
       ),
     [state.todosByDate],
+  );
+  const availableThreads = useMemo(
+    () =>
+      state.threads
+        .filter((thread) => !thread.archived)
+        .sort((left, right) =>
+          Number(right.pinned) - Number(left.pinned) ||
+          left.sortOrder - right.sortOrder ||
+          left.createdAt.localeCompare(right.createdAt),
+        ),
+    [state.threads],
   );
 
   useEffect(() => {
@@ -147,6 +160,7 @@ function TasksScreen() {
         setOpenMenuId(null);
         setOpenThreadMenuId(null);
         setMenuDateAction(null);
+        setMenuThreadTodoId(null);
       }
     };
 
@@ -261,6 +275,11 @@ function TasksScreen() {
 
     setOpenMenuId(null);
     setMenuDateAction(null);
+  };
+
+  const handleThreadAction = (todo: TodoItem, threadId: string) => {
+    addTodoToThread(todo.sourceDate, todo.id, threadId);
+    setMenuThreadTodoId(null);
   };
 
   const getDateLabel = (date: string) => {
@@ -505,6 +524,21 @@ function TasksScreen() {
                     </button>
                   </>
                 ) : null}
+                {!sourceThread && todo.text.trim() !== "" ? (
+                  <button
+                    type="button"
+                    className="task-line-menu-item"
+                    role="menuitem"
+                    onClick={() => {
+                      setOpenMenuId(null);
+                      setMenuDateAction(null);
+                      setMenuThreadTodoId(todo.id);
+                    }}
+                  >
+                    <Layers size={15} />
+                    <span>Add to thread</span>
+                  </button>
+                ) : null}
                 <button
                   className="task-line-menu-item danger"
                   role="menuitem"
@@ -577,6 +611,9 @@ function TasksScreen() {
 
   const dateActionTodo = menuDateAction
     ? visibleTodos.find((todo) => todo.id === menuDateAction.todoId) ?? null
+    : null;
+  const threadActionTodo = menuThreadTodoId
+    ? visibleTodos.find((todo) => todo.id === menuThreadTodoId) ?? null
     : null;
   const draggedTodo = dragState
     ? visibleTodos.find((todo) => todo.id === dragState.todoId) ?? null
@@ -679,6 +716,49 @@ function TasksScreen() {
               title={menuDateAction.mode === "copy" ? "Copy Task To" : "Move Task To"}
               onCancel={() => setMenuDateAction(null)}
             />
+          </div>
+        </div>
+      ) : null}
+      {threadActionTodo ? (
+        <div
+          className="task-action-datepicker-overlay"
+          onClick={() => setMenuThreadTodoId(null)}
+        >
+          <div
+            className="datepicker-popup task-action-thread-picker-popup"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="task-thread-picker-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="datepicker-modal-header">
+              <div id="task-thread-picker-title" className="datepicker-modal-title">Add Task To Thread</div>
+              <button
+                type="button"
+                className="datepicker-modal-close"
+                aria-label="Cancel"
+                onClick={() => setMenuThreadTodoId(null)}
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="task-thread-picker-list">
+              {availableThreads.length > 0 ? (
+                availableThreads.map((thread) => (
+                  <button
+                    key={thread.id}
+                    type="button"
+                    className="task-thread-picker-option"
+                    onClick={() => handleThreadAction(threadActionTodo, thread.id)}
+                  >
+                    <Layers size={16} />
+                    <span>{thread.title || "Untitled thread"}</span>
+                  </button>
+                ))
+              ) : (
+                <div className="task-thread-picker-empty">No active threads.</div>
+              )}
+            </div>
           </div>
         </div>
       ) : null}

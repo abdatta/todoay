@@ -1197,6 +1197,7 @@ input {
   right: 0;
   z-index: 10;
   min-width: 164px;
+  max-width: min(260px, calc(100vw - 32px));
   padding: 6px;
   border-radius: 12px;
   border: 1px solid var(--border-subtle);
@@ -1215,6 +1216,12 @@ input {
   text-align: left;
   white-space: nowrap;
   font-size: 0.95rem;
+}
+
+.task-line-menu-item span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .task-line-menu-item:hover:not(:disabled) {
@@ -1242,14 +1249,92 @@ input {
   -webkit-backdrop-filter: blur(6px);
 }
 
+@keyframes taskActionPopupFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .task-action-datepicker-popup {
   position: relative;
+  top: auto;
+  left: auto;
   width: min(340px, calc(100vw - 32px));
   transform: none;
+  animation: taskActionPopupFadeIn 0.2s ease-out forwards;
 }
 
 .task-action-datepicker-popup:hover {
   transform: translateY(-4px);
+}
+
+.task-action-thread-picker-popup {
+  position: relative;
+  top: auto;
+  left: auto;
+  width: min(340px, calc(100vw - 32px));
+  max-height: min(520px, calc(100vh - 48px));
+  overflow: hidden;
+  transform: none;
+  animation: taskActionPopupFadeIn 0.2s ease-out forwards;
+}
+
+.task-action-thread-picker-popup:hover {
+  transform: translateY(-4px);
+}
+
+.task-thread-picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: min(420px, calc(100vh - 160px));
+  overflow-y: auto;
+  padding-top: 4px;
+}
+
+.task-thread-picker-option {
+  width: 100%;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px;
+  border-radius: 10px;
+  color: var(--text-main);
+  font-size: 0.96rem;
+  font-weight: 700;
+  text-align: left;
+}
+
+.task-thread-picker-option svg {
+  flex: 0 0 auto;
+  color: var(--accent-color);
+}
+
+.task-thread-picker-option span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-thread-picker-option:hover,
+.task-thread-picker-option:focus-visible {
+  background: rgba(255, 255, 255, 0.05);
+  outline: none;
+}
+
+.task-thread-picker-empty {
+  min-height: 80px;
+  display: grid;
+  place-items: center;
+  color: var(--text-light);
+  font-size: 0.92rem;
 }
 
 .thread-delete-row {
@@ -2292,11 +2377,26 @@ input {
   }
 
   .task-action-datepicker-popup {
+    top: auto;
+    left: auto;
     width: min(340px, calc(100vw - 24px));
     transform: none;
+    animation: taskActionPopupFadeIn 0.2s ease-out forwards;
   }
 
   .task-action-datepicker-popup:hover {
+    transform: none;
+  }
+
+  .task-action-thread-picker-popup {
+    top: auto;
+    left: auto;
+    width: min(340px, calc(100vw - 24px));
+    transform: none;
+    animation: taskActionPopupFadeIn 0.2s ease-out forwards;
+  }
+
+  .task-action-thread-picker-popup:hover {
     transform: none;
   }
 }

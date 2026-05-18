@@ -414,6 +414,7 @@ type StoreValue = {
   deleteThreadTask: (threadId: string, taskId: string) => void;
   reorderThreadTask: (threadId: string, taskId: string, targetTaskId: string, placement: "before" | "after") => void;
   scheduleThreadTaskToDate: (threadId: string, taskId: string, toDate: string) => void;
+  addTodoToThread: (date: string, todoId: string, threadId: string) => void;
   addNote: (date: string) => string;
   updateNoteDoc: (noteId: string, patch: Partial<NoteDocument>) => void;
   removeNoteFromDate: (date: string, noteId: string) => void;
@@ -1780,6 +1781,71 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
           todosByDate: {
             ...current.todosByDate,
             [toDate]: [...targetTodos, nextTodo],
+          },
+        };
+      });
+    },
+    addTodoToThread(date, todoId, threadId) {
+      applyLocalMutation((current, stamp) => {
+        const sourceTodo = (current.todosByDate[date] ?? []).find((todo) => todo.id === todoId);
+        const targetThread = current.threads.find((thread) => thread.id === threadId);
+        if (!sourceTodo || !targetThread || targetThread.archived) {
+          return current;
+        }
+
+        const alreadyInThread = current.threads.some((thread) =>
+          thread.tasks.some((task) => task.referenceId === sourceTodo.referenceId),
+        );
+        if (sourceTodo.threadId || alreadyInThread) {
+          return current;
+        }
+
+        const taskId = createId();
+        const nextTask: ThreadTaskItem = {
+          id: taskId,
+          referenceId: sourceTodo.referenceId,
+          text: sourceTodo.text,
+          durationMinutes: sourceTodo.durationMinutes,
+          completed: sourceTodo.completed,
+          createdAt: stamp.updatedAt,
+          updatedAt: stamp.updatedAt,
+          mutationId: stamp.mutationId,
+          sortOrder: (targetThread.tasks[targetThread.tasks.length - 1]?.sortOrder ?? 0) + 1024,
+        };
+
+        return {
+          ...current,
+          todosByDate: Object.fromEntries(
+            Object.entries(current.todosByDate).map(([todoDate, items]) => [
+              todoDate,
+              items.map((todo) =>
+                todo.referenceId === sourceTodo.referenceId
+                  ? {
+                      ...todo,
+                      threadId,
+                      threadTaskId: taskId,
+                      updatedAt: stamp.updatedAt,
+                      mutationId: stamp.mutationId,
+                    }
+                  : todo,
+              ),
+            ]),
+          ),
+          threads: current.threads.map((thread) =>
+            thread.id === threadId
+              ? {
+                  ...thread,
+                  updatedAt: stamp.updatedAt,
+                  mutationId: stamp.mutationId,
+                  tasks: [...thread.tasks, nextTask],
+                }
+              : thread,
+          ),
+          syncMetadata: {
+            ...current.syncMetadata,
+            threadTaskTombstones: Object.fromEntries(
+              Object.entries(current.syncMetadata.threadTaskTombstones).filter(([key]) => key !== taskId),
+            ),
           },
         };
       });
