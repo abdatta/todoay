@@ -706,6 +706,10 @@ input {
   cursor: pointer;
 }
 
+.thread-title-input {
+  cursor: text;
+}
+
 .datepicker-month-track {
   will-change: transform;
 }

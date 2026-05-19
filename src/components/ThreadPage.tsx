@@ -8,9 +8,9 @@ import {
   ArchiveRestore,
   CalendarPlus,
   CalendarClock,
+  ChevronLeft,
   Layers,
   GripVertical,
-  Pencil,
   Plus,
   Trash2,
 } from "lucide-react";
@@ -68,7 +68,6 @@ function ThreadScreen({ threadId }: { threadId: string }) {
   const scheduleMenuRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const pendingFocusRef = useRef<{ id: string; mode: "selectAll" | "cursorEnd" } | null>(null);
   const inputRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
-  const titleInputRef = useRef<HTMLInputElement | null>(null);
 
   const thread = state.threads.find((candidate) => candidate.id === threadId) ?? null;
   const openTasks = thread?.tasks.filter((task) => !task.completed) ?? [];
@@ -124,13 +123,6 @@ function ThreadScreen({ threadId }: { threadId: string }) {
       document.removeEventListener("keydown", handleEscape);
     };
   }, [openMenuId, openScheduleMenuId]);
-
-  useEffect(() => {
-    if (isEditingTitle) {
-      titleInputRef.current?.focus();
-      titleInputRef.current?.select();
-    }
-  }, [isEditingTitle]);
 
   if (!ready) {
     return <div className="loading-screen">Loading Todoay...</div>;
@@ -424,60 +416,42 @@ function ThreadScreen({ threadId }: { threadId: string }) {
           <button
             type="button"
             className="btn-icon thread-detail-toolbar-button"
+            aria-label="Back to threads"
+            title="Back to threads"
+            onClick={() => router.push("/threads")}
+          >
+            <ChevronLeft size={20} strokeWidth={2.5} />
+          </button>
+          <input
+            className="thread-picker-static thread-title-input"
+            aria-label="Thread title"
+            style={{ width: `clamp(132px, ${titleWidthCh}ch, min(360px, calc(100vw - 144px)))` }}
+            value={titleValue}
+            onFocus={startEditingTitle}
+            onDoubleClick={(event) => event.currentTarget.select()}
+            onChange={(event) => setTitleDraft(event.target.value)}
+            onBlur={commitTitleDraft}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                event.currentTarget.blur();
+              }
+              if (event.key === "Escape") {
+                event.preventDefault();
+                setTitleDraft(null);
+                setIsEditingTitle(false);
+                event.currentTarget.blur();
+              }
+            }}
+          />
+          <button
+            type="button"
+            className="btn-icon thread-detail-toolbar-button"
             aria-label={thread.archived ? "Restore thread" : "Archive thread"}
             title={thread.archived ? "Restore thread" : "Archive thread"}
             onClick={() => updateThread(thread.id, { archived: !thread.archived })}
           >
             {thread.archived ? <ArchiveRestore size={17} /> : <Archive size={17} />}
-          </button>
-          {isEditingTitle ? (
-            <input
-              ref={titleInputRef}
-              className="thread-picker-static thread-title-input"
-              aria-label="Thread title"
-              style={{ width: `clamp(132px, ${titleWidthCh}ch, min(360px, calc(100vw - 144px)))` }}
-              value={titleValue}
-              onChange={(event) => setTitleDraft(event.target.value)}
-              onBlur={commitTitleDraft}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  event.currentTarget.blur();
-                }
-                if (event.key === "Escape") {
-                  event.preventDefault();
-                  setTitleDraft(null);
-                  setIsEditingTitle(false);
-                  event.currentTarget.blur();
-                }
-              }}
-            />
-          ) : (
-            <button
-              type="button"
-              className="thread-picker-static thread-title-button"
-              aria-label="Back to threads"
-              style={{ width: `clamp(132px, ${titleWidthCh}ch, min(360px, calc(100vw - 144px)))` }}
-              onClick={() => router.push("/threads")}
-            >
-              <span>{titleValue || "Untitled thread"}</span>
-            </button>
-          )}
-          <button
-            type="button"
-            className={`btn-icon thread-detail-toolbar-button${isEditingTitle ? " active" : ""}`}
-            aria-label={isEditingTitle ? "Save thread name" : "Edit thread name"}
-            title={isEditingTitle ? "Save thread name" : "Edit thread name"}
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => {
-              if (isEditingTitle) {
-                commitTitleDraft();
-              } else {
-                startEditingTitle();
-              }
-            }}
-          >
-            <Pencil size={17} />
           </button>
         </div>
 
