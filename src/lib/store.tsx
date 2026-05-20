@@ -401,6 +401,7 @@ type StoreValue = {
   addTodo: (date: string) => string;
   updateTodo: (date: string, todoId: string, patch: Partial<TodoItem>) => void;
   deleteTodo: (date: string, todoId: string) => void;
+  deleteTodoReference: (date: string, todoId: string) => void;
   reorderTodo: (date: string, todoId: string, targetTodoId: string, placement: "before" | "after") => void;
   copyTodoToDate: (fromDate: string, todoId: string, toDate: string) => void;
   copyTodoReferenceToDate: (fromDate: string, todoId: string, toDate: string) => void;
@@ -1222,6 +1223,43 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
           },
         },
       }));
+    },
+    deleteTodoReference(date, todoId) {
+      applyLocalMutation((current, stamp) => {
+        const sourceTodo = (current.todosByDate[date] ?? []).find((todo) => todo.id === todoId);
+        if (!sourceTodo) {
+          return current;
+        }
+
+        const relatedTodos = Object.values(current.todosByDate)
+          .flat()
+          .filter((todo) => todo.referenceId === sourceTodo.referenceId);
+
+        return {
+          ...current,
+          todosByDate: Object.fromEntries(
+            Object.entries(current.todosByDate).map(([todoDate, items]) => [
+              todoDate,
+              items.filter((todo) => todo.referenceId !== sourceTodo.referenceId),
+            ]),
+          ),
+          syncMetadata: {
+            ...current.syncMetadata,
+            todoTombstones: {
+              ...current.syncMetadata.todoTombstones,
+              ...Object.fromEntries(
+                relatedTodos.map((todo) => [
+                  todo.id,
+                  {
+                    deletedAt: stamp.updatedAt,
+                    mutationId: stamp.mutationId,
+                  },
+                ]),
+              ),
+            },
+          },
+        };
+      });
     },
     reorderTodo(date, todoId, targetTodoId, placement) {
       applyLocalMutation((current, stamp) => {

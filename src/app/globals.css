@@ -1475,7 +1475,7 @@ input {
 }
 
 .backlog-task-line {
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
 }
 
 .backlog-task-text {
@@ -1485,6 +1485,11 @@ input {
   font-size: 1.02rem;
   line-height: 1.45;
   overflow-wrap: anywhere;
+}
+
+.backlog-task-text.completed {
+  color: var(--text-muted);
+  text-decoration: line-through;
 }
 
 .backlog-duration-chip {
