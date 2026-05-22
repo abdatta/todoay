@@ -10,7 +10,6 @@ import {
   type KeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { format, isToday, isYesterday, parseISO } from "date-fns";
 import { Archive, ArchiveRestore, ChevronDown, ChevronRight, Layers, Pin, Plus } from "lucide-react";
 import ClientReady from "@/components/ClientReady";
 import PageHeader from "@/components/PageHeader";
@@ -60,6 +59,26 @@ const getLastProgressedAt = (thread: ThreadRecord) =>
     return latest === null || progressedAt.localeCompare(latest) > 0 ? progressedAt : latest;
   }, null);
 
+const getElapsedProgressLabel = (timestamp: string, now: Date) => {
+  const elapsedMs = Math.max(0, now.getTime() - new Date(timestamp).getTime());
+  const elapsedMinutes = Math.floor(elapsedMs / 60000);
+
+  if (elapsedMinutes < 1) {
+    return "now";
+  }
+  if (elapsedMinutes < 60) {
+    return `${elapsedMinutes} ${elapsedMinutes === 1 ? "min" : "mins"} ago`;
+  }
+
+  const elapsedHours = Math.floor(elapsedMinutes / 60);
+  if (elapsedHours < 24) {
+    return `${elapsedHours} ${elapsedHours === 1 ? "hour" : "hours"} ago`;
+  }
+
+  const elapsedDays = Math.floor(elapsedHours / 24);
+  return `${elapsedDays} ${elapsedDays === 1 ? "day" : "days"} ago`;
+};
+
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
@@ -70,6 +89,7 @@ function ThreadsScreen() {
   const [draftTitle, setDraftTitle] = useState<string | null>(null);
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [isArchiveExpanded, setIsArchiveExpanded] = useState(false);
+  const [now, setNow] = useState(() => new Date());
   const draftInputRef = useRef<HTMLInputElement | null>(null);
   const rowRefs = useRef<Record<string, HTMLElement | null>>({});
   const laneRefs = useRef<Record<ThreadLane, HTMLDivElement | null>>({
@@ -101,6 +121,11 @@ function ThreadsScreen() {
       draftInputRef.current?.focus();
     }
   }, [draftTitle]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => setNow(new Date()), 60000);
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   const clearLongPress = useCallback(() => {
     if (longPressRef.current?.timeoutId) {
@@ -164,19 +189,6 @@ function ThreadsScreen() {
       event.preventDefault();
       setDraftTitle(null);
     }
-  };
-
-  const getRelativeDateLabel = (timestamp: string) => {
-    const date = parseISO(timestamp);
-    if (isToday(date)) {
-      return "Today";
-    }
-    if (isYesterday(date)) {
-      return "Yesterday";
-    }
-    return date.getFullYear() === new Date().getFullYear()
-      ? format(date, "MMM d")
-      : format(date, "MMM d, yyyy");
   };
 
   const laneThreadsFor = useCallback((lane: ThreadLane) => {
@@ -412,7 +424,7 @@ function ThreadsScreen() {
         >
           <span className="thread-list-title">{thread.title || "Untitled thread"}</span>
           <span className="thread-list-meta">
-            {openTaskCount} open {openTaskCount === 1 ? "task" : "tasks"} · {lastProgressedAt ? `Last Progressed ${getRelativeDateLabel(lastProgressedAt)}` : "No Progress Yet"}
+            {openTaskCount} open {openTaskCount === 1 ? "task" : "tasks"} · {lastProgressedAt ? `Progressed ${getElapsedProgressLabel(lastProgressedAt, now)}` : "No progress yet"}
           </span>
         </Link>
         <div className="thread-list-actions">
