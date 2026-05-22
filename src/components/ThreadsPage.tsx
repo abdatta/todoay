@@ -50,6 +50,16 @@ const LONG_PRESS_MOVE_TOLERANCE = 8;
 const getOpenThreadTaskCount = (thread: ThreadRecord) =>
   thread.tasks.filter((task) => !task.completed && task.text.trim() !== "").length;
 
+const getLastProgressedAt = (thread: ThreadRecord) =>
+  thread.tasks.reduce<string | null>((latest, task) => {
+    if (!task.completed) {
+      return latest;
+    }
+
+    const progressedAt = task.completedAt ?? task.updatedAt;
+    return latest === null || progressedAt.localeCompare(latest) > 0 ? progressedAt : latest;
+  }, null);
+
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
@@ -156,8 +166,8 @@ function ThreadsScreen() {
     }
   };
 
-  const getLastUpdatedLabel = (updatedAt: string) => {
-    const date = parseISO(updatedAt);
+  const getRelativeDateLabel = (timestamp: string) => {
+    const date = parseISO(timestamp);
     if (isToday(date)) {
       return "Today";
     }
@@ -341,6 +351,7 @@ function ThreadsScreen() {
     }
 
     const openTaskCount = getOpenThreadTaskCount(thread);
+    const lastProgressedAt = getLastProgressedAt(thread);
     const hasNoOpenTasks = openTaskCount === 0;
     const isDragging = dragState?.threadId === thread.id;
     const isPlaceholder = isDragging && !renderAsOverlay;
@@ -401,7 +412,7 @@ function ThreadsScreen() {
         >
           <span className="thread-list-title">{thread.title || "Untitled thread"}</span>
           <span className="thread-list-meta">
-            {openTaskCount} open {openTaskCount === 1 ? "task" : "tasks"} · Last updated {getLastUpdatedLabel(thread.updatedAt)}
+            {openTaskCount} open {openTaskCount === 1 ? "task" : "tasks"} · {lastProgressedAt ? `Last Progressed ${getRelativeDateLabel(lastProgressedAt)}` : "No Progress Yet"}
           </span>
         </Link>
         <div className="thread-list-actions">

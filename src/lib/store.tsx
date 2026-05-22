@@ -1190,6 +1190,12 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
                           (key === "durationMinutes" && "durationMinutes" in patch),
                       ),
                     ),
+                    completedAt:
+                      patch.completed === true && !task.completed
+                        ? stamp.updatedAt
+                        : patch.completed === false
+                          ? undefined
+                          : task.completedAt,
                     updatedAt: stamp.updatedAt,
                     mutationId: stamp.mutationId,
                   }
@@ -1650,6 +1656,12 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
                       ? {
                           ...task,
                           ...patch,
+                          completedAt:
+                            patch.completed === true && !task.completed
+                              ? stamp.updatedAt
+                              : patch.completed === false
+                                ? undefined
+                                : task.completedAt,
                           updatedAt: stamp.updatedAt,
                           mutationId: stamp.mutationId,
                         }
@@ -1845,6 +1857,7 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
           text: sourceTodo.text,
           durationMinutes: sourceTodo.durationMinutes,
           completed: sourceTodo.completed,
+          completedAt: sourceTodo.completed ? sourceTodo.updatedAt : undefined,
           createdAt: stamp.updatedAt,
           updatedAt: stamp.updatedAt,
           mutationId: stamp.mutationId,

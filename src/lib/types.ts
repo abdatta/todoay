@@ -31,6 +31,7 @@ export type ThreadTaskItem = {
   text: string;
   durationMinutes?: number;
   completed: boolean;
+  completedAt?: string;
   createdAt: string;
   updatedAt: string;
   mutationId: string;

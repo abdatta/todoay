@@ -157,6 +157,7 @@ const normalizeThreadTask = (
     text: task.text ?? "",
     durationMinutes,
     completed: task.completed ?? false,
+    completedAt: task.completed ? task.completedAt ?? updatedAt : undefined,
     createdAt,
     updatedAt,
     mutationId: task.mutationId ?? createLegacyMutationId("thread-task", id, updatedAt),
