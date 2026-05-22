@@ -11,6 +11,7 @@ import {
   ChevronLeft,
   Layers,
   GripVertical,
+  MoreVertical,
   Plus,
   Trash2,
 } from "lucide-react";
@@ -61,11 +62,13 @@ function ThreadScreen({ threadId }: { threadId: string }) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [openScheduleMenuId, setOpenScheduleMenuId] = useState<string | null>(null);
   const [scheduleTaskId, setScheduleTaskId] = useState<string | null>(null);
+  const [isThreadActionMenuOpen, setIsThreadActionMenuOpen] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState<string | null>(null);
   const [menuViewDate, setMenuViewDate] = useState<Date>(parseISO(today));
   const menuRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const scheduleMenuRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const threadActionMenuRef = useRef<HTMLDivElement | null>(null);
   const pendingFocusRef = useRef<{ id: string; mode: "selectAll" | "cursorEnd" } | null>(null);
   const inputRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
 
@@ -106,6 +109,14 @@ function ThreadScreen({ threadId }: { threadId: string }) {
         }
       }
 
+      if (
+        isThreadActionMenuOpen &&
+        threadActionMenuRef.current &&
+        event.target instanceof Node &&
+        !threadActionMenuRef.current.contains(event.target)
+      ) {
+        setIsThreadActionMenuOpen(false);
+      }
     };
 
     const handleEscape = (event: KeyboardEvent) => {
@@ -113,6 +124,7 @@ function ThreadScreen({ threadId }: { threadId: string }) {
         setOpenMenuId(null);
         setOpenScheduleMenuId(null);
         setScheduleTaskId(null);
+        setIsThreadActionMenuOpen(false);
       }
     };
 
@@ -122,7 +134,7 @@ function ThreadScreen({ threadId }: { threadId: string }) {
       document.removeEventListener("mousedown", handlePointerDown);
       document.removeEventListener("keydown", handleEscape);
     };
-  }, [openMenuId, openScheduleMenuId]);
+  }, [isThreadActionMenuOpen, openMenuId, openScheduleMenuId]);
 
   if (!ready) {
     return <div className="loading-screen">Loading Todoay...</div>;
@@ -444,15 +456,53 @@ function ThreadScreen({ threadId }: { threadId: string }) {
               }
             }}
           />
-          <button
-            type="button"
-            className="btn-icon thread-detail-toolbar-button"
-            aria-label={thread.archived ? "Restore thread" : "Archive thread"}
-            title={thread.archived ? "Restore thread" : "Archive thread"}
-            onClick={() => updateThread(thread.id, { archived: !thread.archived })}
+          <div
+            className="thread-detail-action-menu"
+            ref={threadActionMenuRef}
           >
-            {thread.archived ? <ArchiveRestore size={17} /> : <Archive size={17} />}
-          </button>
+            <button
+              type="button"
+              className="btn-icon thread-detail-toolbar-button"
+              aria-label="Open thread menu"
+              title="Open thread menu"
+              aria-expanded={isThreadActionMenuOpen}
+              onClick={() => {
+                setOpenMenuId(null);
+                setOpenScheduleMenuId(null);
+                setIsThreadActionMenuOpen((current) => !current);
+              }}
+            >
+              <MoreVertical size={17} />
+            </button>
+            {isThreadActionMenuOpen ? (
+              <div className="thread-detail-menu-popover" role="menu" aria-label="Thread actions">
+                <button
+                  type="button"
+                  className="thread-detail-menu-item"
+                  role="menuitem"
+                  onClick={() => {
+                    updateThread(thread.id, { archived: !thread.archived });
+                    setIsThreadActionMenuOpen(false);
+                  }}
+                >
+                  {thread.archived ? <ArchiveRestore size={15} /> : <Archive size={15} />}
+                  <span>{thread.archived ? "Unarchive" : "Archive"}</span>
+                </button>
+                <button
+                  type="button"
+                  className="thread-detail-menu-item danger"
+                  role="menuitem"
+                  onClick={() => {
+                    setIsThreadActionMenuOpen(false);
+                    handleDeleteThread();
+                  }}
+                >
+                  <Trash2 size={15} />
+                  <span>Delete</span>
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
 
         <section className="card task-list-card">
@@ -483,11 +533,6 @@ function ThreadScreen({ threadId }: { threadId: string }) {
           ) : null}
         </section>
 
-        <div className="thread-delete-row">
-          <button type="button" className="thread-delete-button" onClick={handleDeleteThread}>
-            Delete thread
-          </button>
-        </div>
       </div>
 
       {scheduleTask && !isReadOnly ? (
