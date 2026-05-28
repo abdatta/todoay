@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent, KeyboardEvent } from "react";
 import { format } from "date-fns";
 import { Plus, NotebookPen, X } from "lucide-react";
@@ -14,7 +14,19 @@ function autoResizeTextarea(element: HTMLTextAreaElement | null) {
     return;
   }
 
-  element.style.height = "0px";
+  const currentHeight = element.getBoundingClientRect().height;
+  const nextHeight = element.scrollHeight;
+
+  if (nextHeight > currentHeight + 1) {
+    element.style.height = `${nextHeight}px`;
+    return;
+  }
+
+  if (nextHeight >= currentHeight - 1) {
+    return;
+  }
+
+  element.style.height = "auto";
   element.style.height = `${element.scrollHeight}px`;
 }
 
@@ -37,6 +49,8 @@ function getBulletPrefix(text: string, selectionStart: number) {
 function NotesScreen() {
   const today = format(new Date(), "yyyy-MM-dd");
   const [selectedDate, setSelectedDate] = useState(today);
+  const pendingFocusNoteId = useRef<string | null>(null);
+  const noteTextareaRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
   const { ready, state, addNote, updateNoteDoc, removeNoteFromDate, getVisibleNoteIds } = useTodoay();
 
   const noteIds = useMemo(() => getVisibleNoteIds(selectedDate, today), [getVisibleNoteIds, selectedDate, today]);
@@ -54,13 +68,37 @@ function NotesScreen() {
     [state.noteIdsByDate],
   );
 
+  useLayoutEffect(() => {
+    const focusNoteId = pendingFocusNoteId.current;
+    if (!focusNoteId) {
+      return;
+    }
+
+    const textarea = noteTextareaRefs.current[focusNoteId];
+    if (!textarea) {
+      return;
+    }
+
+    const caretPosition = textarea.value.length;
+    textarea.focus({ preventScroll: true });
+    textarea.setSelectionRange(caretPosition, caretPosition);
+    autoResizeTextarea(textarea);
+    pendingFocusNoteId.current = null;
+  });
+
   const handleDraftChange = (content: string) => {
     if (!content) {
       return;
     }
 
     const noteId = addNote(selectedDate);
+    pendingFocusNoteId.current = noteId;
     updateNoteDoc(noteId, { content });
+  };
+
+  const handleAddNote = () => {
+    const noteId = addNote(selectedDate);
+    pendingFocusNoteId.current = noteId;
   };
 
   const handleDeleteNote = (noteId: string) => {
@@ -130,7 +168,10 @@ function NotesScreen() {
                     handleBulletEnter(event, (nextContent) => updateNoteDoc(note.id, { content: nextContent }))
                   }
                   onInput={(event: FormEvent<HTMLTextAreaElement>) => autoResizeTextarea(event.currentTarget)}
-                  ref={autoResizeTextarea}
+                  ref={(element) => {
+                    noteTextareaRefs.current[note.id] = element;
+                    autoResizeTextarea(element);
+                  }}
                 />
             </article>
           ))
@@ -151,7 +192,7 @@ function NotesScreen() {
             />
           </article>
         )}
-        <button className="secondary-button" onClick={() => addNote(selectedDate)}>
+        <button className="secondary-button" onClick={handleAddNote}>
           <Plus size={16} /> Add another note
         </button>
       </section>
