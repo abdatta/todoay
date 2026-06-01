@@ -215,171 +215,498 @@ const createDeletionStamp = (stamp: MutationStamp) => ({
   mutationId: stamp.mutationId,
 });
 
-const getTodoIds = (state: TodoayState) =>
-  new Set(Object.values(state.todosByDate).flatMap((items) => items.map((todo) => todo.id)));
+const stableStringify = (value: unknown) => JSON.stringify(value);
 
-const getNoteLinkKeys = (state: TodoayState) =>
+const meaningfulTodo = (todo: TodoItem) => ({
+  id: todo.id,
+  referenceId: todo.referenceId,
+  text: todo.text,
+  durationMinutes: todo.durationMinutes,
+  completed: todo.completed,
+  pinned: todo.pinned,
+  createdAt: todo.createdAt,
+  sortOrder: todo.sortOrder,
+  sourceDate: todo.sourceDate,
+  copiedFromDate: todo.copiedFromDate,
+  threadId: todo.threadId,
+  threadTaskId: todo.threadTaskId,
+});
+
+const meaningfulNote = (note: NoteDocument) => ({
+  id: note.id,
+  title: note.title,
+  content: note.content,
+  pinned: note.pinned,
+  createdAt: note.createdAt,
+});
+
+const meaningfulThreadTask = (task: ThreadTaskItem) => ({
+  id: task.id,
+  referenceId: task.referenceId,
+  text: task.text,
+  durationMinutes: task.durationMinutes,
+  completed: task.completed,
+  completedAt: task.completedAt,
+  createdAt: task.createdAt,
+  sortOrder: task.sortOrder,
+});
+
+const meaningfulThreadFields = (thread: ThreadRecord) => ({
+  id: thread.id,
+  title: thread.title,
+  pinned: thread.pinned,
+  archived: thread.archived,
+  createdAt: thread.createdAt,
+  sortOrder: thread.sortOrder,
+});
+
+const meaningfulThread = (thread: ThreadRecord) => ({
+  ...meaningfulThreadFields(thread),
+  tasks: thread.tasks.map(meaningfulThreadTask),
+});
+
+const isSameMeaningfulTodo = (left: TodoItem, right: TodoItem) =>
+  stableStringify(meaningfulTodo(left)) === stableStringify(meaningfulTodo(right));
+
+const isSameMeaningfulNote = (left: NoteDocument, right: NoteDocument) =>
+  stableStringify(meaningfulNote(left)) === stableStringify(meaningfulNote(right));
+
+const isSameMeaningfulThreadTask = (left: ThreadTaskItem, right: ThreadTaskItem) =>
+  stableStringify(meaningfulThreadTask(left)) === stableStringify(meaningfulThreadTask(right));
+
+const isSameMeaningfulThreadFields = (left: ThreadRecord, right: ThreadRecord) =>
+  stableStringify(meaningfulThreadFields(left)) === stableStringify(meaningfulThreadFields(right));
+
+const isSameMeaningfulThread = (left: ThreadRecord, right: ThreadRecord) =>
+  stableStringify(meaningfulThread(left)) === stableStringify(meaningfulThread(right));
+
+const getTodosById = (state: TodoayState) =>
+  new Map(Object.values(state.todosByDate).flat().map((todo) => [todo.id, todo]));
+
+const getThreadsById = (state: TodoayState) => new Map(state.threads.map((thread) => [thread.id, thread]));
+
+const getThreadTasksById = (state: TodoayState) =>
+  new Map(
+    state.threads.flatMap((thread) =>
+      thread.tasks.map((task) => [task.id, { threadId: thread.id, task }] as const),
+    ),
+  );
+
+const getNoteLinkSet = (state: TodoayState) =>
   new Set(
     Object.entries(state.noteIdsByDate).flatMap(([date, noteIds]) =>
       noteIds.map((noteId) => `${date}:${noteId}`),
     ),
   );
 
-const getThreadTaskIds = (state: TodoayState) =>
-  new Set(state.threads.flatMap((thread) => thread.tasks.map((task) => task.id)));
+const stripTodoFromState = (state: TodoayState, todoId: string) => {
+  state.todosByDate = Object.fromEntries(
+    Object.entries(state.todosByDate).map(([date, items]) => [
+      date,
+      items.filter((todo) => todo.id !== todoId),
+    ]),
+  );
+};
 
-const restampStateForRestore = (
-  targetInput: TodoayState,
+const addTodoToState = (state: TodoayState, todo: TodoItem) => {
+  stripTodoFromState(state, todo.id);
+  state.todosByDate = {
+    ...state.todosByDate,
+    [todo.sourceDate]: [...(state.todosByDate[todo.sourceDate] ?? []), todo],
+  };
+};
+
+const removeNoteLinkFromState = (state: TodoayState, date: string, noteId: string, stamp: MutationStamp) => {
+  state.noteIdsByDate = {
+    ...state.noteIdsByDate,
+    [date]: (state.noteIdsByDate[date] ?? []).filter((id) => id !== noteId),
+  };
+  state.syncMetadata.noteLinkMetadata = {
+    ...state.syncMetadata.noteLinkMetadata,
+    [date]: Object.fromEntries(
+      Object.entries(state.syncMetadata.noteLinkMetadata[date] ?? {}).filter(([id]) => id !== noteId),
+    ),
+  };
+  state.syncMetadata.noteLinkTombstones = {
+    ...state.syncMetadata.noteLinkTombstones,
+    [date]: {
+      ...(state.syncMetadata.noteLinkTombstones[date] ?? {}),
+      [noteId]: createDeletionStamp(stamp),
+    },
+  };
+};
+
+const addNoteLinkToState = (state: TodoayState, date: string, noteId: string, stamp: MutationStamp) => {
+  state.noteIdsByDate = {
+    ...state.noteIdsByDate,
+    [date]: Array.from(new Set([...(state.noteIdsByDate[date] ?? []), noteId])),
+  };
+  state.syncMetadata.noteLinkMetadata = {
+    ...state.syncMetadata.noteLinkMetadata,
+    [date]: {
+      ...(state.syncMetadata.noteLinkMetadata[date] ?? {}),
+      [noteId]: stamp,
+    },
+  };
+  state.syncMetadata.noteLinkTombstones = {
+    ...state.syncMetadata.noteLinkTombstones,
+    [date]: Object.fromEntries(
+      Object.entries(state.syncMetadata.noteLinkTombstones[date] ?? {}).filter(([id]) => id !== noteId),
+    ),
+  };
+};
+
+const stampTodo = (todo: TodoItem, stamp: MutationStamp): TodoItem => ({
+  ...todo,
+  updatedAt: stamp.updatedAt,
+  mutationId: stamp.mutationId,
+});
+
+const stampNote = (note: NoteDocument, stamp: MutationStamp): NoteDocument => ({
+  ...note,
+  updatedAt: stamp.updatedAt,
+  mutationId: stamp.mutationId,
+});
+
+const stampThread = (thread: ThreadRecord, stamp: MutationStamp): ThreadRecord => ({
+  ...thread,
+  updatedAt: stamp.updatedAt,
+  mutationId: stamp.mutationId,
+});
+
+const stampThreadTask = (task: ThreadTaskItem, stamp: MutationStamp): ThreadTaskItem => ({
+  ...task,
+  updatedAt: stamp.updatedAt,
+  mutationId: stamp.mutationId,
+});
+
+const parseNoteLinkKey = (key: string) => {
+  const separatorIndex = key.indexOf(":");
+  return {
+    date: key.slice(0, separatorIndex),
+    noteId: key.slice(separatorIndex + 1),
+  };
+};
+
+const createRevertConflict = (message: string) =>
+  new Error(`Cannot revert this change because ${message}.`);
+
+const applyRevertPatch = (
   currentInput: TodoayState,
+  selectedInput: TodoayState,
+  previousInput: TodoayState,
   stamp: MutationStamp,
 ) => {
-  const target = normalizeState(targetInput);
   const current = normalizeState(currentInput);
+  const selected = normalizeState(selectedInput);
+  const previous = normalizeState(previousInput);
+  const next = normalizeState(current);
   const deletionStamp = createDeletionStamp(stamp);
-  const targetTodoIds = getTodoIds(target);
-  const targetNoteIds = new Set(Object.keys(target.noteDocs));
-  const targetThreadIds = new Set(target.threads.map((thread) => thread.id));
-  const targetThreadTaskIds = getThreadTaskIds(target);
-  const targetNoteLinkKeys = getNoteLinkKeys(target);
 
-  const todoTombstones = Object.fromEntries(
-    Object.keys(target.syncMetadata.todoTombstones).map((todoId) => [todoId, deletionStamp]),
-  );
-  Object.values(current.todosByDate).forEach((items) => {
-    items.forEach((todo) => {
-      if (!targetTodoIds.has(todo.id)) {
-        todoTombstones[todo.id] = deletionStamp;
+  const currentTodos = getTodosById(current);
+  const selectedTodos = getTodosById(selected);
+  const previousTodos = getTodosById(previous);
+  const todoIds = new Set([...selectedTodos.keys(), ...previousTodos.keys()]);
+
+  todoIds.forEach((todoId) => {
+    const selectedTodo = selectedTodos.get(todoId);
+    const previousTodo = previousTodos.get(todoId);
+    const currentTodo = currentTodos.get(todoId);
+
+    if (selectedTodo && !previousTodo) {
+      if (!currentTodo || !isSameMeaningfulTodo(currentTodo, selectedTodo)) {
+        throw createRevertConflict(`task "${selectedTodo.text || "Untitled task"}" changed after this history entry`);
       }
-    });
-  });
-  targetTodoIds.forEach((todoId) => {
-    delete todoTombstones[todoId];
-  });
+      stripTodoFromState(next, todoId);
+      next.syncMetadata.todoTombstones = {
+        ...next.syncMetadata.todoTombstones,
+        [todoId]: deletionStamp,
+      };
+      return;
+    }
 
-  const noteTombstones = Object.fromEntries(
-    Object.keys(target.syncMetadata.noteTombstones).map((noteId) => [noteId, deletionStamp]),
-  );
-  Object.keys(current.noteDocs).forEach((noteId) => {
-    if (!targetNoteIds.has(noteId)) {
-      noteTombstones[noteId] = deletionStamp;
+    if (!selectedTodo && previousTodo) {
+      if (currentTodo) {
+        throw createRevertConflict(`task "${previousTodo.text || "Untitled task"}" already exists`);
+      }
+      addTodoToState(next, stampTodo(previousTodo, stamp));
+      next.syncMetadata.todoTombstones = Object.fromEntries(
+        Object.entries(next.syncMetadata.todoTombstones).filter(([id]) => id !== todoId),
+      );
+      return;
+    }
+
+    if (selectedTodo && previousTodo && !isSameMeaningfulTodo(selectedTodo, previousTodo)) {
+      if (!currentTodo || !isSameMeaningfulTodo(currentTodo, selectedTodo)) {
+        throw createRevertConflict(`task "${selectedTodo.text || "Untitled task"}" changed after this history entry`);
+      }
+      addTodoToState(next, stampTodo(previousTodo, stamp));
+      next.syncMetadata.todoTombstones = Object.fromEntries(
+        Object.entries(next.syncMetadata.todoTombstones).filter(([id]) => id !== todoId),
+      );
     }
   });
-  targetNoteIds.forEach((noteId) => {
-    delete noteTombstones[noteId];
-  });
 
-  const threadTombstones = Object.fromEntries(
-    Object.keys(target.syncMetadata.threadTombstones).map((threadId) => [threadId, deletionStamp]),
-  );
-  current.threads.forEach((thread) => {
-    if (!targetThreadIds.has(thread.id)) {
-      threadTombstones[thread.id] = deletionStamp;
-    }
-  });
-  targetThreadIds.forEach((threadId) => {
-    delete threadTombstones[threadId];
-  });
+  const noteIds = new Set([...Object.keys(selected.noteDocs), ...Object.keys(previous.noteDocs)]);
+  noteIds.forEach((noteId) => {
+    const selectedNote = selected.noteDocs[noteId];
+    const previousNote = previous.noteDocs[noteId];
+    const currentNote = current.noteDocs[noteId];
 
-  const threadTaskTombstones = Object.fromEntries(
-    Object.keys(target.syncMetadata.threadTaskTombstones).map((taskId) => [taskId, deletionStamp]),
-  );
-  current.threads.forEach((thread) => {
-    thread.tasks.forEach((task) => {
-      if (!targetThreadTaskIds.has(task.id)) {
-        threadTaskTombstones[task.id] = deletionStamp;
+    if (selectedNote && !previousNote) {
+      if (!currentNote || !isSameMeaningfulNote(currentNote, selectedNote)) {
+        throw createRevertConflict(`note "${selectedNote.title || "Untitled note"}" changed after this history entry`);
       }
-    });
-  });
-  targetThreadTaskIds.forEach((taskId) => {
-    delete threadTaskTombstones[taskId];
-  });
-
-  const noteLinkTombstones: TodoayState["syncMetadata"]["noteLinkTombstones"] = {};
-  Object.entries(target.syncMetadata.noteLinkTombstones).forEach(([date, entries]) => {
-    noteLinkTombstones[date] = Object.fromEntries(
-      Object.keys(entries).map((noteId) => [noteId, deletionStamp]),
-    );
-  });
-  Object.entries(current.noteIdsByDate).forEach(([date, noteIds]) => {
-    noteIds.forEach((noteId) => {
-      if (targetNoteLinkKeys.has(`${date}:${noteId}`)) {
-        return;
-      }
-      noteLinkTombstones[date] = {
-        ...(noteLinkTombstones[date] ?? {}),
+      const nextNoteIdsByDate = Object.fromEntries(
+        Object.entries(next.noteIdsByDate).map(([date, noteIdsForDate]) => [
+          date,
+          noteIdsForDate.filter((id) => id !== noteId),
+        ]),
+      );
+      delete next.noteDocs[noteId];
+      next.noteIdsByDate = nextNoteIdsByDate;
+      next.syncMetadata.noteTombstones = {
+        ...next.syncMetadata.noteTombstones,
         [noteId]: deletionStamp,
       };
-    });
-  });
-  Object.entries(target.noteIdsByDate).forEach(([date, noteIds]) => {
-    noteIds.forEach((noteId) => {
-      if (noteLinkTombstones[date]) {
-        delete noteLinkTombstones[date][noteId];
+      return;
+    }
+
+    if (!selectedNote && previousNote) {
+      if (currentNote) {
+        throw createRevertConflict(`note "${previousNote.title || "Untitled note"}" already exists`);
       }
-    });
+      next.noteDocs = {
+        ...next.noteDocs,
+        [noteId]: stampNote(previousNote, stamp),
+      };
+      next.syncMetadata.noteTombstones = Object.fromEntries(
+        Object.entries(next.syncMetadata.noteTombstones).filter(([id]) => id !== noteId),
+      );
+      return;
+    }
+
+    if (selectedNote && previousNote && !isSameMeaningfulNote(selectedNote, previousNote)) {
+      if (!currentNote || !isSameMeaningfulNote(currentNote, selectedNote)) {
+        throw createRevertConflict(`note "${selectedNote.title || "Untitled note"}" changed after this history entry`);
+      }
+      next.noteDocs = {
+        ...next.noteDocs,
+        [noteId]: stampNote(previousNote, stamp),
+      };
+    }
   });
 
-  const todosByDate = Object.fromEntries(
-    Object.entries(target.todosByDate).map(([date, items]) => [
-      date,
-      items.map((todo) => ({
-        ...todo,
-        updatedAt: stamp.updatedAt,
-        mutationId: stamp.mutationId,
-      })),
-    ]),
-  );
+  const selectedLinks = getNoteLinkSet(selected);
+  const previousLinks = getNoteLinkSet(previous);
+  const currentLinks = getNoteLinkSet(current);
+  const noteLinkKeys = new Set([...selectedLinks, ...previousLinks]);
 
-  const noteDocs = Object.fromEntries(
-    Object.entries(target.noteDocs).map(([noteId, note]) => [
-      noteId,
-      {
-        ...note,
-        updatedAt: stamp.updatedAt,
-        mutationId: stamp.mutationId,
-      },
-    ]),
-  );
+  noteLinkKeys.forEach((linkKey) => {
+    const selectedHasLink = selectedLinks.has(linkKey);
+    const previousHasLink = previousLinks.has(linkKey);
+    if (selectedHasLink === previousHasLink) {
+      return;
+    }
 
-  const threads = target.threads.map((thread) => ({
-    ...thread,
-    updatedAt: stamp.updatedAt,
-    mutationId: stamp.mutationId,
-    tasks: thread.tasks.map((task) => ({
-      ...task,
-      updatedAt: stamp.updatedAt,
-      mutationId: stamp.mutationId,
-    })),
-  }));
+    const { date, noteId } = parseNoteLinkKey(linkKey);
+    const currentHasLink = currentLinks.has(linkKey);
+    const noteTitle = selected.noteDocs[noteId]?.title ?? previous.noteDocs[noteId]?.title ?? "Untitled note";
 
-  const noteLinkMetadata = Object.fromEntries(
-    Object.entries(target.noteIdsByDate).map(([date, noteIds]) => [
-      date,
-      Object.fromEntries(noteIds.map((noteId) => [noteId, stamp])),
-    ]),
-  );
+    if (selectedHasLink && !previousHasLink) {
+      if (!currentHasLink) {
+        throw createRevertConflict(`note link "${noteTitle}" changed after this history entry`);
+      }
+      removeNoteLinkFromState(next, date, noteId, stamp);
+      return;
+    }
 
-  return normalizeState({
-    ...target,
-    todosByDate,
-    noteDocs,
-    threads,
-    syncMetadata: {
-      schemaVersion: target.syncMetadata.schemaVersion,
-      todoTombstones,
-      noteTombstones,
-      noteLinkMetadata,
-      noteLinkTombstones: Object.fromEntries(
-        Object.entries(noteLinkTombstones).filter(([, entries]) => Object.keys(entries).length > 0),
-      ),
-      threadTombstones,
-      threadTaskTombstones,
-      settings: {
-        themeMode: stamp,
-        copyToBehavior: stamp,
-      },
-    },
+    if (!selectedHasLink && previousHasLink) {
+      if (currentHasLink) {
+        throw createRevertConflict(`note link "${noteTitle}" already exists`);
+      }
+      if (!next.noteDocs[noteId]) {
+        throw createRevertConflict(`note "${noteTitle}" is missing`);
+      }
+      addNoteLinkToState(next, date, noteId, stamp);
+    }
   });
+
+  const selectedThreads = getThreadsById(selected);
+  const previousThreads = getThreadsById(previous);
+  const currentThreads = getThreadsById(current);
+  const threadIds = new Set([...selectedThreads.keys(), ...previousThreads.keys()]);
+  const fullyHandledThreadIds = new Set<string>();
+
+  threadIds.forEach((threadId) => {
+    const selectedThread = selectedThreads.get(threadId);
+    const previousThread = previousThreads.get(threadId);
+    const currentThread = currentThreads.get(threadId);
+
+    if (selectedThread && !previousThread) {
+      if (!currentThread || !isSameMeaningfulThread(currentThread, selectedThread)) {
+        throw createRevertConflict(`thread "${selectedThread.title || "Untitled thread"}" changed after this history entry`);
+      }
+      next.threads = next.threads.filter((thread) => thread.id !== threadId);
+      next.syncMetadata.threadTombstones = {
+        ...next.syncMetadata.threadTombstones,
+        [threadId]: deletionStamp,
+      };
+      fullyHandledThreadIds.add(threadId);
+      return;
+    }
+
+    if (!selectedThread && previousThread) {
+      if (currentThread) {
+        throw createRevertConflict(`thread "${previousThread.title || "Untitled thread"}" already exists`);
+      }
+      next.threads = [...next.threads, stampThread({
+        ...previousThread,
+        tasks: previousThread.tasks.map((task) => stampThreadTask(task, stamp)),
+      }, stamp)];
+      next.syncMetadata.threadTombstones = Object.fromEntries(
+        Object.entries(next.syncMetadata.threadTombstones).filter(([id]) => id !== threadId),
+      );
+      previousThread.tasks.forEach((task) => {
+        next.syncMetadata.threadTaskTombstones = Object.fromEntries(
+          Object.entries(next.syncMetadata.threadTaskTombstones).filter(([id]) => id !== task.id),
+        );
+      });
+      fullyHandledThreadIds.add(threadId);
+      return;
+    }
+
+    if (selectedThread && previousThread && !isSameMeaningfulThreadFields(selectedThread, previousThread)) {
+      if (!currentThread || !isSameMeaningfulThreadFields(currentThread, selectedThread)) {
+        throw createRevertConflict(`thread "${selectedThread.title || "Untitled thread"}" changed after this history entry`);
+      }
+      next.threads = next.threads.map((thread) =>
+        thread.id === threadId
+          ? stampThread({
+              ...thread,
+              title: previousThread.title,
+              pinned: previousThread.pinned,
+              archived: previousThread.archived,
+              sortOrder: previousThread.sortOrder,
+            }, stamp)
+          : thread,
+      );
+    }
+  });
+
+  const selectedTasks = getThreadTasksById(selected);
+  const previousTasks = getThreadTasksById(previous);
+  const currentTasks = getThreadTasksById(current);
+  const taskIds = new Set([...selectedTasks.keys(), ...previousTasks.keys()]);
+
+  taskIds.forEach((taskId) => {
+    const selectedTask = selectedTasks.get(taskId);
+    const previousTask = previousTasks.get(taskId);
+    const currentTask = currentTasks.get(taskId);
+    const parentThreadId = selectedTask?.threadId ?? previousTask?.threadId;
+    if (parentThreadId && fullyHandledThreadIds.has(parentThreadId)) {
+      return;
+    }
+
+    if (selectedTask && !previousTask) {
+      if (
+        !currentTask ||
+        currentTask.threadId !== selectedTask.threadId ||
+        !isSameMeaningfulThreadTask(currentTask.task, selectedTask.task)
+      ) {
+        throw createRevertConflict(`thread task "${selectedTask.task.text || "Untitled thread task"}" changed after this history entry`);
+      }
+      next.threads = next.threads.map((thread) =>
+        thread.id === selectedTask.threadId
+          ? stampThread({
+              ...thread,
+              tasks: thread.tasks.filter((task) => task.id !== taskId),
+            }, stamp)
+          : thread,
+      );
+      next.syncMetadata.threadTaskTombstones = {
+        ...next.syncMetadata.threadTaskTombstones,
+        [taskId]: deletionStamp,
+      };
+      return;
+    }
+
+    if (!selectedTask && previousTask) {
+      if (currentTask) {
+        throw createRevertConflict(`thread task "${previousTask.task.text || "Untitled thread task"}" already exists`);
+      }
+      if (!next.threads.some((thread) => thread.id === previousTask.threadId)) {
+        throw createRevertConflict(`thread for task "${previousTask.task.text || "Untitled thread task"}" is missing`);
+      }
+      next.threads = next.threads.map((thread) =>
+        thread.id === previousTask.threadId
+          ? stampThread({
+              ...thread,
+              tasks: [...thread.tasks, stampThreadTask(previousTask.task, stamp)],
+            }, stamp)
+          : thread,
+      );
+      next.syncMetadata.threadTaskTombstones = Object.fromEntries(
+        Object.entries(next.syncMetadata.threadTaskTombstones).filter(([id]) => id !== taskId),
+      );
+      return;
+    }
+
+    if (
+      selectedTask &&
+      previousTask &&
+      (
+        selectedTask.threadId !== previousTask.threadId ||
+        !isSameMeaningfulThreadTask(selectedTask.task, previousTask.task)
+      )
+    ) {
+      if (
+        !currentTask ||
+        currentTask.threadId !== selectedTask.threadId ||
+        !isSameMeaningfulThreadTask(currentTask.task, selectedTask.task)
+      ) {
+        throw createRevertConflict(`thread task "${selectedTask.task.text || "Untitled thread task"}" changed after this history entry`);
+      }
+      if (!next.threads.some((thread) => thread.id === previousTask.threadId)) {
+        throw createRevertConflict(`thread for task "${previousTask.task.text || "Untitled thread task"}" is missing`);
+      }
+      next.threads = next.threads.map((thread) =>
+        thread.id === currentTask.threadId
+          ? stampThread({
+              ...thread,
+              tasks:
+                previousTask.threadId === currentTask.threadId
+                  ? thread.tasks.map((task) =>
+                      task.id === taskId ? stampThreadTask(previousTask.task, stamp) : task,
+                    )
+                  : thread.tasks.filter((task) => task.id !== taskId),
+            }, stamp)
+          : thread.id === previousTask.threadId
+            ? stampThread({
+                ...thread,
+                tasks: [...thread.tasks, stampThreadTask(previousTask.task, stamp)],
+              }, stamp)
+          : thread,
+      );
+    }
+  });
+
+  if (selected.themeMode !== previous.themeMode || selected.copyToBehavior !== previous.copyToBehavior) {
+    if (current.themeMode !== selected.themeMode || current.copyToBehavior !== selected.copyToBehavior) {
+      throw createRevertConflict("settings changed after this history entry");
+    }
+    next.themeMode = previous.themeMode;
+    next.copyToBehavior = previous.copyToBehavior;
+    next.syncMetadata.settings = {
+      themeMode: selected.themeMode === previous.themeMode ? next.syncMetadata.settings.themeMode : stamp,
+      copyToBehavior:
+        selected.copyToBehavior === previous.copyToBehavior
+          ? next.syncMetadata.settings.copyToBehavior
+          : stamp,
+    };
+  }
+
+  return normalizeState(next);
 };
 
 const withTimeout = async <T,>(promise: PromiseLike<T>, timeoutMs: number, message: string) => {
@@ -655,7 +982,7 @@ type StoreValue = {
   signOut: () => Promise<void>;
   syncNow: () => Promise<void>;
   listSnapshotCommits: () => Promise<TodoaySnapshotCommit[]>;
-  restoreSnapshotCommit: (commitId: string) => Promise<void>;
+  revertSnapshotCommit: (commitId: string) => Promise<void>;
   addTodo: (date: string) => string;
   updateTodo: (date: string, todoId: string, patch: Partial<TodoItem>) => void;
   deleteTodo: (date: string, todoId: string) => void;
@@ -1334,21 +1661,22 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
     return (data ?? []).map(toSnapshotCommit);
   }, []);
 
-  const restoreSnapshotCommit = useCallback(
+  const revertSnapshotCommit = useCallback(
     async (commitId: string) => {
       const client = getSupabaseClient();
       const currentSession = sessionRef.current;
 
       if (!client || !currentSession?.user) {
-        throw new Error("Sign in to restore cloud history.");
+        throw new Error("Sign in to revert cloud history.");
       }
 
       if (syncInFlightRef.current) {
-        throw new Error("Sync is busy. Try restoring again in a moment.");
+        throw new Error("Sync is busy. Try reverting again in a moment.");
       }
 
       syncInFlightRef.current = true;
       const startedAt = new Date().toISOString();
+      let revertStamp: MutationStamp | null = null;
       setIsSyncing(true);
       setLastSyncAttemptAt(startedAt);
       setSyncError(null);
@@ -1363,7 +1691,7 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
             .eq("id", commitId)
             .single(),
           SYNC_TIMEOUT_MS,
-          "History restore is taking longer than expected. Try again in a moment.",
+          "History revert is taking longer than expected. Try again in a moment.",
         );
 
         if (error) {
@@ -1371,30 +1699,58 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
         }
 
         if (!commit?.state) {
-          throw new Error("That history entry no longer has a restorable snapshot.");
+          throw new Error("That history entry no longer has a revertible snapshot.");
+        }
+
+        const { data: previousCommit, error: previousError } = await withTimeout<SnapshotCommitSingleQueryResult>(
+          client
+            .from(SNAPSHOT_COMMIT_TABLE)
+            .select("id, revision, state, source, reason, restored_from_revision, task_count, note_count, thread_count, created_at")
+            .eq("user_id", currentSession.user.id)
+            .lt("revision", Number(commit.revision))
+            .order("revision", { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+          SYNC_TIMEOUT_MS,
+          "History revert is taking longer than expected. Try again in a moment.",
+        );
+
+        if (previousError) {
+          throw previousError;
+        }
+
+        if (!previousCommit?.state) {
+          throw new Error("This is the oldest available history entry, so there is no earlier state to revert to.");
         }
 
         const remoteSnapshot = await fetchRemoteSnapshot(currentSession.user.id);
+        if (!remoteSnapshot) {
+          throw new Error("Cannot revert because there is no current cloud snapshot.");
+        }
+
+        if (localSyncMetaRef.current.pendingSync) {
+          throw new Error("Sync your local changes before reverting history.");
+        }
+
         const stamp = takeMutationStamp();
-        const currentRestoreBase = remoteSnapshot?.state
-          ? mergeTodoayStates(stateRef.current, remoteSnapshot.state)
-          : stateRef.current;
-        const restoredState = restampStateForRestore(
+        revertStamp = stamp;
+        const revertedState = applyRevertPatch(
+          remoteSnapshot.state,
           normalizeState(commit.state),
-          currentRestoreBase,
+          normalizeState(previousCommit.state),
           stamp,
         );
-        const restoredAt = new Date().toISOString();
+        const revertedAt = new Date().toISOString();
         const upsertedSnapshot = await writeRemoteSnapshot(
           client,
-          restoredState,
-          "restore",
+          revertedState,
+          "revert",
           Number(commit.revision),
-          restoredAt,
+          revertedAt,
         );
 
-        stateRef.current = restoredState;
-        setState(restoredState);
+        stateRef.current = revertedState;
+        setState(revertedState);
         updateLocalSyncMeta((current) => ({
           ...current,
           pendingSync:
@@ -1403,8 +1759,18 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
           lastRemoteRevision: upsertedSnapshot.revision,
         }));
       } catch (error) {
-        console.error("Todoay history restore failed", error);
-        setSyncError(error instanceof Error ? error.message : "History restore failed.");
+        if (revertStamp) {
+          const failedStamp = revertStamp;
+          updateLocalSyncMeta((current) => ({
+            ...current,
+            pendingSync:
+              current.lastLocalChangeAt !== null && current.lastLocalChangeAt !== failedStamp.updatedAt,
+            lastLocalChangeAt:
+              current.lastLocalChangeAt === failedStamp.updatedAt ? null : current.lastLocalChangeAt,
+          }));
+        }
+        console.error("Todoay history revert failed", error);
+        setSyncError(error instanceof Error ? error.message : "History revert failed.");
         throw error;
       } finally {
         syncInFlightRef.current = false;
@@ -1496,8 +1862,8 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
     async listSnapshotCommits() {
       return listSnapshotCommits();
     },
-    async restoreSnapshotCommit(commitId) {
-      await restoreSnapshotCommit(commitId);
+    async revertSnapshotCommit(commitId) {
+      await revertSnapshotCommit(commitId);
     },
     addTodo(date) {
       const todoId = createId();
@@ -2483,7 +2849,7 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
     performSync,
     ready,
     resolvedTheme,
-    restoreSnapshotCommit,
+    revertSnapshotCommit,
     state,
     syncStatus,
     takeMutationStamp,

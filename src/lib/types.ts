@@ -106,7 +106,7 @@ export type SnapshotCommitSource = {
   label: string;
 };
 
-export type SnapshotCommitReason = "sync" | "restore";
+export type SnapshotCommitReason = "sync" | "restore" | "revert";
 
 export type TodoaySnapshotCommit = {
   id: string;

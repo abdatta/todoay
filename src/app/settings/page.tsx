@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { createPortal } from "react-dom";
-import { Settings, MoonStar, Copy, Download, Upload, FileWarning, Cloud, LogOut, History, RotateCcw, X } from "lucide-react";
+import { Settings, MoonStar, Copy, Download, Upload, FileWarning, Cloud, LogOut, History, RotateCcw, X, ChevronDown } from "lucide-react";
 import ClientReady from "@/components/ClientReady";
 import PageHeader from "@/components/PageHeader";
 import { useTodoay } from "@/lib/store";
@@ -10,9 +10,13 @@ import { formatSyncedText } from "@/lib/syncPresentation";
 import type {
   ImportConflict,
   ImportConflictResolution,
+  NoteDocument,
+  ThreadRecord,
+  ThreadTaskItem,
   TodoaySnapshotCommit,
   TodoayExportData,
   TodoayState,
+  TodoItem,
   ThemeMode,
 } from "@/lib/types";
 
@@ -92,6 +96,353 @@ const threadSummaryMap = (snapshot: TodoayState) =>
 const noteSummaryMap = (snapshot: TodoayState) =>
   new Map(Object.entries(snapshot.noteDocs).map(([noteId, note]) => [noteId, JSON.stringify(note)]));
 
+type HistoryDiffEntry = {
+  kind: "added" | "removed" | "changed";
+  title: string;
+  details: string[];
+};
+
+type HistoryDiffSection = {
+  title: string;
+  entries: HistoryDiffEntry[];
+};
+
+type ThreadTaskSnapshot = ThreadTaskItem & {
+  threadTitle: string;
+};
+
+const stringifyValue = (value: string | number | boolean | undefined) => {
+  if (value === undefined || value === "") {
+    return "empty";
+  }
+  if (typeof value === "boolean") {
+    return value ? "yes" : "no";
+  }
+  return String(value);
+};
+
+const compactText = (value: string | undefined) => {
+  const normalized = (value ?? "").replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return "empty";
+  }
+  return normalized.length > 140 ? `${normalized.slice(0, 137)}...` : normalized;
+};
+
+const formatChange = (
+  label: string,
+  before: string | number | boolean | undefined,
+  after: string | number | boolean | undefined,
+) => `${label}: ${stringifyValue(before)} -> ${stringifyValue(after)}`;
+
+const addFieldChange = (
+  details: string[],
+  label: string,
+  before: string | number | boolean | undefined,
+  after: string | number | boolean | undefined,
+) => {
+  if (before !== after) {
+    details.push(formatChange(label, before, after));
+  }
+};
+
+const todoTitle = (todo: TodoItem) => todo.text.trim() || "Untitled task";
+const noteTitle = (note: NoteDocument) => note.title.trim() || "Untitled note";
+const threadTitle = (thread: ThreadRecord) => thread.title.trim() || "Untitled thread";
+const taskTitle = (task: ThreadTaskSnapshot) => task.text.trim() || "Untitled thread task";
+
+const todoMap = (snapshot: TodoayState) =>
+  new Map(Object.values(snapshot.todosByDate).flat().map((todo) => [todo.id, todo]));
+
+const noteMap = (snapshot: TodoayState) => new Map(Object.entries(snapshot.noteDocs));
+
+const threadMap = (snapshot: TodoayState) =>
+  new Map(snapshot.threads.map((thread) => [thread.id, thread]));
+
+const threadTaskMap = (snapshot: TodoayState) =>
+  new Map(
+    snapshot.threads.flatMap((thread) =>
+      thread.tasks.map((task) => [
+        task.id,
+        {
+          ...task,
+          threadTitle: threadTitle(thread),
+        },
+      ]),
+    ),
+  );
+
+const noteLinkMap = (snapshot: TodoayState) =>
+  new Map(
+    Object.entries(snapshot.noteIdsByDate).flatMap(([date, noteIds]) =>
+      noteIds.map((noteId) => {
+        const note = snapshot.noteDocs[noteId];
+        return [
+          `${date}:${noteId}`,
+          {
+            date,
+            title: note ? noteTitle(note) : "Untitled note",
+          },
+        ];
+      }),
+    ),
+  );
+
+const diffMaps = <T,>(
+  current: Map<string, T>,
+  previous: Map<string, T>,
+  createAdded: (item: T) => HistoryDiffEntry,
+  createRemoved: (item: T) => HistoryDiffEntry,
+  createChanged: (currentItem: T, previousItem: T) => HistoryDiffEntry | null,
+) => {
+  const entries: HistoryDiffEntry[] = [];
+
+  current.forEach((item, key) => {
+    const previousItem = previous.get(key);
+    if (!previousItem) {
+      entries.push(createAdded(item));
+      return;
+    }
+
+    const changed = createChanged(item, previousItem);
+    if (changed) {
+      entries.push(changed);
+    }
+  });
+
+  previous.forEach((item, key) => {
+    if (!current.has(key)) {
+      entries.push(createRemoved(item));
+    }
+  });
+
+  return entries;
+};
+
+const buildTodoChange = (current: TodoItem, previous: TodoItem) => {
+  const details: string[] = [];
+  addFieldChange(details, "Text", previous.text, current.text);
+  addFieldChange(details, "Completed", previous.completed, current.completed);
+  addFieldChange(details, "Pinned", previous.pinned, current.pinned);
+  addFieldChange(details, "Duration", previous.durationMinutes, current.durationMinutes);
+  addFieldChange(details, "Date", previous.sourceDate, current.sourceDate);
+  return details.length > 0
+    ? {
+        kind: "changed" as const,
+        title: todoTitle(current),
+        details,
+      }
+    : null;
+};
+
+const buildNoteChange = (current: NoteDocument, previous: NoteDocument) => {
+  const details: string[] = [];
+  addFieldChange(details, "Title", previous.title, current.title);
+  addFieldChange(details, "Pinned", previous.pinned, current.pinned);
+  if (previous.content !== current.content) {
+    details.push(formatChange("Content", compactText(previous.content), compactText(current.content)));
+  }
+  return details.length > 0
+    ? {
+        kind: "changed" as const,
+        title: noteTitle(current),
+        details,
+      }
+    : null;
+};
+
+const buildThreadChange = (current: ThreadRecord, previous: ThreadRecord) => {
+  const details: string[] = [];
+  addFieldChange(details, "Title", previous.title, current.title);
+  addFieldChange(details, "Pinned", previous.pinned, current.pinned);
+  addFieldChange(details, "Archived", previous.archived, current.archived);
+  return details.length > 0
+    ? {
+        kind: "changed" as const,
+        title: threadTitle(current),
+        details,
+      }
+    : null;
+};
+
+const buildThreadTaskChange = (current: ThreadTaskSnapshot, previous: ThreadTaskSnapshot) => {
+  const details: string[] = [];
+  addFieldChange(details, "Text", previous.text, current.text);
+  addFieldChange(details, "Completed", previous.completed, current.completed);
+  addFieldChange(details, "Duration", previous.durationMinutes, current.durationMinutes);
+  addFieldChange(details, "Thread", previous.threadTitle, current.threadTitle);
+  return details.length > 0
+    ? {
+        kind: "changed" as const,
+        title: taskTitle(current),
+        details,
+      }
+    : null;
+};
+
+const buildSettingsDiff = (current: TodoayState, previous: TodoayState) => {
+  const details: string[] = [];
+  addFieldChange(details, "Theme", previous.themeMode, current.themeMode);
+  addFieldChange(details, "Copy mode", previous.copyToBehavior, current.copyToBehavior);
+  return details.length > 0
+    ? [{
+        kind: "changed" as const,
+        title: "Settings",
+        details,
+      }]
+    : [];
+};
+
+const buildHistoryDiff = (
+  commit: TodoaySnapshotCommit,
+  previousCommit: TodoaySnapshotCommit | undefined,
+  restoredFromCommit?: TodoaySnapshotCommit,
+): HistoryDiffSection[] => {
+  if (!previousCommit) {
+    return [
+      {
+        title: "Snapshot",
+        entries: [{
+          kind: "added",
+          title: "Saved cloud backup",
+          details: ["This is the oldest available history entry, so there is no earlier snapshot to compare against."],
+        }],
+      },
+    ];
+  }
+
+  const current = commit.state;
+  const previous = previousCommit.state;
+  const sections: HistoryDiffSection[] = [
+    {
+      title: "Tasks",
+      entries: diffMaps(
+        todoMap(current),
+        todoMap(previous),
+        (todo) => ({
+          kind: "added",
+          title: todoTitle(todo),
+          details: [`Added on ${todo.sourceDate}`],
+        }),
+        (todo) => ({
+          kind: "removed",
+          title: todoTitle(todo),
+          details: [`Removed from ${todo.sourceDate}`],
+        }),
+        buildTodoChange,
+      ),
+    },
+    {
+      title: "Notes",
+      entries: diffMaps(
+        noteMap(current),
+        noteMap(previous),
+        (note) => ({
+          kind: "added",
+          title: noteTitle(note),
+          details: [note.content ? `Content: ${compactText(note.content)}` : "Added empty note"],
+        }),
+        (note) => ({
+          kind: "removed",
+          title: noteTitle(note),
+          details: [note.content ? `Content was: ${compactText(note.content)}` : "Removed empty note"],
+        }),
+        buildNoteChange,
+      ),
+    },
+    {
+      title: "Note links",
+      entries: diffMaps(
+        noteLinkMap(current),
+        noteLinkMap(previous),
+        (link) => ({
+          kind: "added",
+          title: link.title,
+          details: [`Linked to ${link.date}`],
+        }),
+        (link) => ({
+          kind: "removed",
+          title: link.title,
+          details: [`Unlinked from ${link.date}`],
+        }),
+        () => null,
+      ),
+    },
+    {
+      title: "Threads",
+      entries: diffMaps(
+        threadMap(current),
+        threadMap(previous),
+        (thread) => ({
+          kind: "added",
+          title: threadTitle(thread),
+          details: [`Added with ${pluralize(thread.tasks.length, "task")}`],
+        }),
+        (thread) => ({
+          kind: "removed",
+          title: threadTitle(thread),
+          details: [`Removed with ${pluralize(thread.tasks.length, "task")}`],
+        }),
+        buildThreadChange,
+      ),
+    },
+    {
+      title: "Thread tasks",
+      entries: diffMaps(
+        threadTaskMap(current),
+        threadTaskMap(previous),
+        (task) => ({
+          kind: "added",
+          title: taskTitle(task),
+          details: [`Added to ${task.threadTitle}`],
+        }),
+        (task) => ({
+          kind: "removed",
+          title: taskTitle(task),
+          details: [`Removed from ${task.threadTitle}`],
+        }),
+        buildThreadTaskChange,
+      ),
+    },
+    {
+      title: "Settings",
+      entries: buildSettingsDiff(current, previous),
+    },
+  ];
+
+  const dataSections = sections.filter((section) => section.entries.length > 0);
+
+  if (commit.reason !== "restore" && commit.reason !== "revert") {
+    return dataSections;
+  }
+
+  const isRevert = commit.reason === "revert";
+  const restoreDetails = restoredFromCommit
+    ? [
+        `${isRevert ? "Reverted" : "Restored"} ${formatHistoryTime(restoredFromCommit.createdAt)}`,
+        `${describeCommitSource(restoredFromCommit)} - ${describeHistoryChange(restoredFromCommit, previousCommit)}`,
+      ]
+    : commit.restoredFromRevision
+      ? [`${isRevert ? "Reverted" : "Restored"} revision ${commit.restoredFromRevision}`]
+      : [`${isRevert ? "Reverted a saved change" : "Restored from an earlier saved version"}`];
+
+  if (dataSections.length === 0) {
+    restoreDetails.push(`The ${isRevert ? "reverted" : "restored"} data matched the adjacent snapshot, so no task, note, thread, or setting fields changed.`);
+  }
+
+  return [
+    {
+      title: "Restore",
+      entries: [{
+        kind: "changed",
+        title: isRevert ? "Reverted saved change" : "Restored saved version",
+        details: restoreDetails,
+      }],
+    },
+    ...dataSections,
+  ];
+};
+
 const countChangedItems = (current: Map<string, string>, previous: Map<string, string>) => {
   let changed = 0;
 
@@ -116,6 +467,9 @@ const describeHistoryChange = (
 ) => {
   if (commit.reason === "restore") {
     return "Restored an earlier version";
+  }
+  if (commit.reason === "revert") {
+    return "Reverted a change";
   }
 
   if (!previousCommit) {
@@ -157,7 +511,7 @@ function SettingsScreen() {
     signInWithGoogle,
     signOut,
     listSnapshotCommits,
-    restoreSnapshotCommit,
+    revertSnapshotCommit,
     state,
   } = useTodoay();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -171,6 +525,7 @@ function SettingsScreen() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [restoringCommitId, setRestoringCommitId] = useState<string | null>(null);
+  const [expandedHistoryCommitId, setExpandedHistoryCommitId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -258,6 +613,7 @@ function SettingsScreen() {
 
     try {
       setHistoryCommits(await listSnapshotCommits());
+      setExpandedHistoryCommitId(null);
     } catch (error) {
       console.error("Failed to load Todoay history", error);
       setHistoryError(error instanceof Error ? error.message : "Failed to load history.");
@@ -271,10 +627,10 @@ function SettingsScreen() {
     void refreshHistory();
   };
 
-  const restoreHistoryCommit = async (commit: TodoaySnapshotCommit) => {
+  const revertHistoryCommit = async (commit: TodoaySnapshotCommit) => {
     const commitTime = formatHistoryTime(commit.createdAt);
     const confirmed = window.confirm(
-      `Restore Todoay to the version from ${commitTime}? This will create a new history entry for the restore.`,
+      `Revert the change from ${commitTime}? This will create a new history entry for the revert.`,
     );
 
     if (!confirmed) {
@@ -285,13 +641,13 @@ function SettingsScreen() {
     setHistoryError(null);
 
     try {
-      await restoreSnapshotCommit(commit.id);
+      await revertSnapshotCommit(commit.id);
       setStatusTone("success");
-      setStatusMessage(`Restored Todoay to the version from ${commitTime}.`);
+      setStatusMessage(`Reverted the change from ${commitTime}.`);
       await refreshHistory();
     } catch (error) {
-      console.error("Failed to restore Todoay history", error);
-      setHistoryError(error instanceof Error ? error.message : "Failed to restore this revision.");
+      console.error("Failed to revert Todoay history", error);
+      setHistoryError(error instanceof Error ? error.message : "Failed to revert this change.");
     } finally {
       setRestoringCommitId(null);
     }
@@ -460,7 +816,7 @@ function SettingsScreen() {
               <span>Cloud history</span>
             </span>
             <span className="settings-row-description">
-              Review recent synced revisions and restore a previous state for this account.
+              Review recent synced revisions and revert the current change when it is safe.
             </span>
           </span>
           <button
@@ -674,7 +1030,7 @@ function SettingsScreen() {
                 <div>
                   <h2 id="cloud-history-title" className="settings-modal-title">Cloud History</h2>
                   <p className="settings-row-description">
-                    Recent account revisions are kept for rollback and audit.
+                    Recent account revisions are kept for audit and change reverts.
                   </p>
                 </div>
               </div>
@@ -701,28 +1057,93 @@ function SettingsScreen() {
                   No cloud history yet. Make a synced change and it will appear here.
                 </div>
               ) : (
-                historyCommits.map((commit, index) => (
-                  <article key={commit.id} className="settings-history-row">
-                    <div className="settings-history-main">
-                      <div className="settings-history-title">
-                        <span>{formatHistoryTime(commit.createdAt)}</span>
-                      </div>
-                      <div className="settings-history-meta">
-                        {describeCommitSource(commit)} - {describeHistoryChange(commit, historyCommits[index + 1])}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      className="settings-icon-action"
-                      onClick={() => void restoreHistoryCommit(commit)}
-                      disabled={Boolean(restoringCommitId)}
-                      aria-label={`Restore version from ${formatHistoryTime(commit.createdAt)}`}
-                      title={`Restore version from ${formatHistoryTime(commit.createdAt)}`}
+                historyCommits.map((commit, index) => {
+                  const isExpanded = expandedHistoryCommitId === commit.id;
+                  const restoredFromCommit = commit.restoredFromRevision === null
+                    ? undefined
+                    : historyCommits.find((candidate) => candidate.revision === commit.restoredFromRevision);
+                  const diffSections = isExpanded
+                    ? buildHistoryDiff(commit, historyCommits[index + 1], restoredFromCommit)
+                    : [];
+
+                  return (
+                    <article
+                      key={commit.id}
+                      className={`settings-history-row ${isExpanded ? "expanded" : ""}`}
                     >
-                      <RotateCcw size={18} />
-                    </button>
-                  </article>
-                ))
+                      <div className="settings-history-row-top">
+                        <button
+                          type="button"
+                          className="settings-history-expand-button"
+                          onClick={() =>
+                            setExpandedHistoryCommitId((current) =>
+                              current === commit.id ? null : commit.id,
+                            )
+                          }
+                          aria-expanded={isExpanded}
+                        >
+                          <span className="settings-history-main">
+                            <span className="settings-history-title">
+                              <span>{formatHistoryTime(commit.createdAt)}</span>
+                            </span>
+                            <span className="settings-history-meta">
+                              {describeCommitSource(commit)} - {describeHistoryChange(commit, historyCommits[index + 1])}
+                            </span>
+                          </span>
+                          <ChevronDown
+                            size={18}
+                            className={`settings-history-chevron ${isExpanded ? "expanded" : ""}`}
+                            aria-hidden="true"
+                          />
+                        </button>
+                        <button
+                          type="button"
+                          className="settings-icon-action"
+                          onClick={() => void revertHistoryCommit(commit)}
+                          disabled={Boolean(restoringCommitId)}
+                          aria-label={`Revert change from ${formatHistoryTime(commit.createdAt)}`}
+                          title={`Revert change from ${formatHistoryTime(commit.createdAt)}`}
+                        >
+                          <RotateCcw size={18} />
+                        </button>
+                      </div>
+
+                      {isExpanded ? (
+                        <div className="settings-history-diff">
+                          {diffSections.length === 0 ? (
+                            <div className="settings-history-diff-empty">No meaningful data changes found.</div>
+                          ) : (
+                            diffSections.map((section) => (
+                              <section key={section.title} className="settings-history-diff-section">
+                                <h3 className="settings-history-diff-heading">{section.title}</h3>
+                                <div className="settings-history-diff-list">
+                                  {section.entries.map((entry, entryIndex) => (
+                                    <article
+                                      key={`${entry.kind}:${entry.title}:${entryIndex}`}
+                                      className={`settings-history-diff-entry ${entry.kind}`}
+                                    >
+                                      <div className="settings-history-diff-entry-title">
+                                        <span className="settings-history-diff-kind">
+                                          {entry.kind === "added" ? "+" : entry.kind === "removed" ? "-" : "~"}
+                                        </span>
+                                        <span>{entry.title}</span>
+                                      </div>
+                                      <ul className="settings-history-diff-details">
+                                        {entry.details.map((detail) => (
+                                          <li key={detail}>{detail}</li>
+                                        ))}
+                                      </ul>
+                                    </article>
+                                  ))}
+                                </div>
+                              </section>
+                            ))
+                          )}
+                        </div>
+                      ) : null}
+                    </article>
+                  );
+                })
               )}
             </div>
           </section>

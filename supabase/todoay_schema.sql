@@ -12,7 +12,7 @@ create table if not exists public.todoay_snapshot_commits (
   revision bigint not null,
   state jsonb not null default '{}'::jsonb,
   source jsonb not null default '{}'::jsonb,
-  reason text not null default 'sync' check (reason in ('sync', 'restore')),
+  reason text not null default 'sync',
   restored_from_revision bigint,
   task_count integer not null default 0,
   note_count integer not null default 0,
@@ -25,6 +25,13 @@ on public.todoay_snapshot_commits (user_id, created_at desc);
 
 create unique index if not exists todoay_snapshot_commits_user_revision_idx
 on public.todoay_snapshot_commits (user_id, revision);
+
+alter table public.todoay_snapshot_commits
+drop constraint if exists todoay_snapshot_commits_reason_check;
+
+alter table public.todoay_snapshot_commits
+add constraint todoay_snapshot_commits_reason_check
+check (reason in ('sync', 'restore', 'revert'));
 
 alter table public.todoay_snapshots enable row level security;
 alter table public.todoay_snapshot_commits enable row level security;
@@ -116,7 +123,7 @@ begin
     raise exception 'Todoay snapshot writes require an authenticated user.';
   end if;
 
-  if p_reason not in ('sync', 'restore') then
+  if p_reason not in ('sync', 'restore', 'revert') then
     raise exception 'Unsupported Todoay snapshot commit reason: %', p_reason;
   end if;
 
