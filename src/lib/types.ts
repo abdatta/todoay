@@ -98,6 +98,29 @@ export type TodoayExportData = {
   syncMetadata?: TodoaySyncMetadata;
 };
 
+export type SnapshotCommitSourceKind = "device" | "agent" | "mcp" | "system";
+
+export type SnapshotCommitSource = {
+  kind: SnapshotCommitSourceKind;
+  id: string;
+  label: string;
+};
+
+export type SnapshotCommitReason = "sync" | "restore";
+
+export type TodoaySnapshotCommit = {
+  id: string;
+  revision: number;
+  createdAt: string;
+  state: TodoayState;
+  source: SnapshotCommitSource;
+  reason: SnapshotCommitReason;
+  restoredFromRevision: number | null;
+  taskCount: number;
+  noteCount: number;
+  threadCount: number;
+};
+
 export type TodoConflict = {
   kind: "todo";
   key: string;

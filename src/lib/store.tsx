@@ -10,7 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { RealtimeChannel, Session } from "@supabase/supabase-js";
+import type { RealtimeChannel, Session, SupabaseClient } from "@supabase/supabase-js";
 import { getOAuthRedirectUrl, getSupabaseClient, isSupabaseConfigured } from "@/lib/supabase";
 import {
   createInitialState,
@@ -27,11 +27,14 @@ import type {
   ImportConflictResolution,
   MutationStamp,
   NoteDocument,
+  SnapshotCommitReason,
+  SnapshotCommitSource,
   SyncStatus,
   SyncUser,
   ThreadRecord,
   ThreadTaskItem,
   TodoItem,
+  TodoaySnapshotCommit,
   TodoayExportData,
   TodoayState,
   ThemeMode,
@@ -41,8 +44,10 @@ const STORAGE_KEY = "todoay-state-v2";
 const LEGACY_STORAGE_KEY = "todoay-state-v1";
 const LOCAL_SYNC_META_KEY = "todoay-local-sync-v1";
 const SNAPSHOT_TABLE = "todoay_snapshots";
+const SNAPSHOT_COMMIT_TABLE = "todoay_snapshot_commits";
 const SYNC_DEBOUNCE_MS = 500;
 const SYNC_TIMEOUT_MS = 12000;
+const SNAPSHOT_HISTORY_LIMIT = 100;
 
 type LocalSyncMeta = {
   clientId: string;
@@ -65,8 +70,36 @@ type SnapshotQueryResult = {
   error: { message: string } | null;
 };
 
-type SnapshotUpsertResult = {
-  data: Pick<SnapshotRecord, "revision" | "updated_at"> | null;
+type SnapshotWriteResult = {
+  snapshot_revision: number;
+  snapshot_updated_at: string;
+};
+
+type SnapshotWriteRpcResult = {
+  data: SnapshotWriteResult | null;
+  error: { message: string } | null;
+};
+
+type SnapshotCommitRecord = {
+  id: string;
+  revision: number;
+  state?: TodoayState;
+  source: Partial<SnapshotCommitSource> | null;
+  reason: SnapshotCommitReason;
+  restored_from_revision: number | null;
+  task_count: number;
+  note_count: number;
+  thread_count: number;
+  created_at: string;
+};
+
+type SnapshotCommitQueryResult = {
+  data: SnapshotCommitRecord[] | null;
+  error: { message: string } | null;
+};
+
+type SnapshotCommitSingleQueryResult = {
+  data: SnapshotCommitRecord | null;
   error: { message: string } | null;
 };
 
@@ -115,6 +148,57 @@ const getStateContentCount = (state: TodoayState) => {
 
 const hasAnyStoredContent = (state: TodoayState) => getStateContentCount(state) > 0;
 
+const getStateSummary = (state: TodoayState) => ({
+  taskCount: Object.values(state.todosByDate).reduce((sum, items) => sum + items.length, 0),
+  noteCount: Object.keys(state.noteDocs).length,
+  threadCount: state.threads.length,
+});
+
+const getDeviceSourceLabel = () => {
+  if (typeof navigator === "undefined") {
+    return "Todoay device";
+  }
+
+  const userAgent = navigator.userAgent;
+  const browser = userAgent.includes("Edg/")
+    ? "Edge"
+    : userAgent.includes("Chrome/")
+      ? "Chrome"
+      : userAgent.includes("Firefox/")
+        ? "Firefox"
+        : userAgent.includes("Safari/")
+          ? "Safari"
+          : "Browser";
+  const platform = navigator.platform || "this device";
+  return `${browser} on ${platform}`;
+};
+
+const createCommitSource = (meta: LocalSyncMeta): SnapshotCommitSource => ({
+  kind: "device",
+  id: meta.clientId,
+  label: getDeviceSourceLabel(),
+});
+
+const normalizeCommitSource = (source: Partial<SnapshotCommitSource> | null): SnapshotCommitSource => ({
+  kind: source?.kind ?? "device",
+  id: source?.id ?? "unknown",
+  label: source?.label ?? "Unknown source",
+});
+
+const toSnapshotCommit = (record: SnapshotCommitRecord): TodoaySnapshotCommit => ({
+  id: record.id,
+  revision: Number(record.revision),
+  createdAt: record.created_at,
+  state: normalizeState(record.state),
+  source: normalizeCommitSource(record.source),
+  reason: record.reason,
+  restoredFromRevision:
+    record.restored_from_revision === null ? null : Number(record.restored_from_revision),
+  taskCount: Number(record.task_count),
+  noteCount: Number(record.note_count),
+  threadCount: Number(record.thread_count),
+});
+
 const clearStoredContent = (state: TodoayState) =>
   normalizeState({
     ...createInitialState(),
@@ -125,6 +209,178 @@ const clearStoredContent = (state: TodoayState) =>
       settings: state.syncMetadata.settings,
     },
   });
+
+const createDeletionStamp = (stamp: MutationStamp) => ({
+  deletedAt: stamp.updatedAt,
+  mutationId: stamp.mutationId,
+});
+
+const getTodoIds = (state: TodoayState) =>
+  new Set(Object.values(state.todosByDate).flatMap((items) => items.map((todo) => todo.id)));
+
+const getNoteLinkKeys = (state: TodoayState) =>
+  new Set(
+    Object.entries(state.noteIdsByDate).flatMap(([date, noteIds]) =>
+      noteIds.map((noteId) => `${date}:${noteId}`),
+    ),
+  );
+
+const getThreadTaskIds = (state: TodoayState) =>
+  new Set(state.threads.flatMap((thread) => thread.tasks.map((task) => task.id)));
+
+const restampStateForRestore = (
+  targetInput: TodoayState,
+  currentInput: TodoayState,
+  stamp: MutationStamp,
+) => {
+  const target = normalizeState(targetInput);
+  const current = normalizeState(currentInput);
+  const deletionStamp = createDeletionStamp(stamp);
+  const targetTodoIds = getTodoIds(target);
+  const targetNoteIds = new Set(Object.keys(target.noteDocs));
+  const targetThreadIds = new Set(target.threads.map((thread) => thread.id));
+  const targetThreadTaskIds = getThreadTaskIds(target);
+  const targetNoteLinkKeys = getNoteLinkKeys(target);
+
+  const todoTombstones = Object.fromEntries(
+    Object.keys(target.syncMetadata.todoTombstones).map((todoId) => [todoId, deletionStamp]),
+  );
+  Object.values(current.todosByDate).forEach((items) => {
+    items.forEach((todo) => {
+      if (!targetTodoIds.has(todo.id)) {
+        todoTombstones[todo.id] = deletionStamp;
+      }
+    });
+  });
+  targetTodoIds.forEach((todoId) => {
+    delete todoTombstones[todoId];
+  });
+
+  const noteTombstones = Object.fromEntries(
+    Object.keys(target.syncMetadata.noteTombstones).map((noteId) => [noteId, deletionStamp]),
+  );
+  Object.keys(current.noteDocs).forEach((noteId) => {
+    if (!targetNoteIds.has(noteId)) {
+      noteTombstones[noteId] = deletionStamp;
+    }
+  });
+  targetNoteIds.forEach((noteId) => {
+    delete noteTombstones[noteId];
+  });
+
+  const threadTombstones = Object.fromEntries(
+    Object.keys(target.syncMetadata.threadTombstones).map((threadId) => [threadId, deletionStamp]),
+  );
+  current.threads.forEach((thread) => {
+    if (!targetThreadIds.has(thread.id)) {
+      threadTombstones[thread.id] = deletionStamp;
+    }
+  });
+  targetThreadIds.forEach((threadId) => {
+    delete threadTombstones[threadId];
+  });
+
+  const threadTaskTombstones = Object.fromEntries(
+    Object.keys(target.syncMetadata.threadTaskTombstones).map((taskId) => [taskId, deletionStamp]),
+  );
+  current.threads.forEach((thread) => {
+    thread.tasks.forEach((task) => {
+      if (!targetThreadTaskIds.has(task.id)) {
+        threadTaskTombstones[task.id] = deletionStamp;
+      }
+    });
+  });
+  targetThreadTaskIds.forEach((taskId) => {
+    delete threadTaskTombstones[taskId];
+  });
+
+  const noteLinkTombstones: TodoayState["syncMetadata"]["noteLinkTombstones"] = {};
+  Object.entries(target.syncMetadata.noteLinkTombstones).forEach(([date, entries]) => {
+    noteLinkTombstones[date] = Object.fromEntries(
+      Object.keys(entries).map((noteId) => [noteId, deletionStamp]),
+    );
+  });
+  Object.entries(current.noteIdsByDate).forEach(([date, noteIds]) => {
+    noteIds.forEach((noteId) => {
+      if (targetNoteLinkKeys.has(`${date}:${noteId}`)) {
+        return;
+      }
+      noteLinkTombstones[date] = {
+        ...(noteLinkTombstones[date] ?? {}),
+        [noteId]: deletionStamp,
+      };
+    });
+  });
+  Object.entries(target.noteIdsByDate).forEach(([date, noteIds]) => {
+    noteIds.forEach((noteId) => {
+      if (noteLinkTombstones[date]) {
+        delete noteLinkTombstones[date][noteId];
+      }
+    });
+  });
+
+  const todosByDate = Object.fromEntries(
+    Object.entries(target.todosByDate).map(([date, items]) => [
+      date,
+      items.map((todo) => ({
+        ...todo,
+        updatedAt: stamp.updatedAt,
+        mutationId: stamp.mutationId,
+      })),
+    ]),
+  );
+
+  const noteDocs = Object.fromEntries(
+    Object.entries(target.noteDocs).map(([noteId, note]) => [
+      noteId,
+      {
+        ...note,
+        updatedAt: stamp.updatedAt,
+        mutationId: stamp.mutationId,
+      },
+    ]),
+  );
+
+  const threads = target.threads.map((thread) => ({
+    ...thread,
+    updatedAt: stamp.updatedAt,
+    mutationId: stamp.mutationId,
+    tasks: thread.tasks.map((task) => ({
+      ...task,
+      updatedAt: stamp.updatedAt,
+      mutationId: stamp.mutationId,
+    })),
+  }));
+
+  const noteLinkMetadata = Object.fromEntries(
+    Object.entries(target.noteIdsByDate).map(([date, noteIds]) => [
+      date,
+      Object.fromEntries(noteIds.map((noteId) => [noteId, stamp])),
+    ]),
+  );
+
+  return normalizeState({
+    ...target,
+    todosByDate,
+    noteDocs,
+    threads,
+    syncMetadata: {
+      schemaVersion: target.syncMetadata.schemaVersion,
+      todoTombstones,
+      noteTombstones,
+      noteLinkMetadata,
+      noteLinkTombstones: Object.fromEntries(
+        Object.entries(noteLinkTombstones).filter(([, entries]) => Object.keys(entries).length > 0),
+      ),
+      threadTombstones,
+      threadTaskTombstones,
+      settings: {
+        themeMode: stamp,
+        copyToBehavior: stamp,
+      },
+    },
+  });
+};
 
 const withTimeout = async <T,>(promise: PromiseLike<T>, timeoutMs: number, message: string) => {
   let timeoutId: number | null = null;
@@ -398,6 +654,8 @@ type StoreValue = {
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   syncNow: () => Promise<void>;
+  listSnapshotCommits: () => Promise<TodoaySnapshotCommit[]>;
+  restoreSnapshotCommit: (commitId: string) => Promise<void>;
   addTodo: (date: string) => string;
   updateTodo: (date: string, todoId: string, patch: Partial<TodoItem>) => void;
   deleteTodo: (date: string, todoId: string) => void;
@@ -521,6 +779,45 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
         }
       : null;
   }, []);
+
+  const writeRemoteSnapshot = useCallback(
+    async (
+      client: SupabaseClient,
+      nextState: TodoayState,
+      reason: SnapshotCommitReason,
+      restoredFromRevision: number | null,
+      createdAt: string,
+    ) => {
+      const summary = getStateSummary(nextState);
+      const { data: writtenSnapshot, error: writeError } = await withTimeout<SnapshotWriteRpcResult>(
+        client
+          .rpc("todoay_write_snapshot_commit", {
+            p_state: nextState,
+            p_source: createCommitSource(localSyncMetaRef.current),
+            p_reason: reason,
+            p_restored_from_revision: restoredFromRevision,
+            p_task_count: summary.taskCount,
+            p_note_count: summary.noteCount,
+            p_thread_count: summary.threadCount,
+            p_created_at: createdAt,
+          })
+          .select("snapshot_revision, snapshot_updated_at")
+          .single(),
+        SYNC_TIMEOUT_MS,
+        "Sync is taking longer than expected. Tap the sync icon to retry.",
+      );
+
+      if (writeError) {
+        throw writeError;
+      }
+
+      return {
+        revision: Number(writtenSnapshot?.snapshot_revision ?? 0),
+        updatedAt: writtenSnapshot?.snapshot_updated_at ?? createdAt,
+      };
+    },
+    [],
+  );
 
   const takeMutationStamp = useCallback(() => {
     const current = localSyncMetaRef.current;
@@ -657,36 +954,21 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
         localSyncMetaRef.current.pendingSync;
 
       if (shouldPush) {
-        const revision = Number(remoteSnapshot?.revision ?? 0) + 1;
         const syncedAt = new Date().toISOString();
-        const { data: upsertedSnapshot, error: upsertError } = await withTimeout<SnapshotUpsertResult>(
-          client
-            .from(SNAPSHOT_TABLE)
-            .upsert(
-              {
-                user_id: currentSession.user.id,
-                state: mergedState,
-                revision,
-                updated_at: syncedAt,
-              },
-              { onConflict: "user_id" },
-            )
-            .select("revision, updated_at")
-            .single(),
-          SYNC_TIMEOUT_MS,
-          "Sync is taking longer than expected. Tap the sync icon to retry.",
+        const upsertedSnapshot = await writeRemoteSnapshot(
+          client,
+          mergedState,
+          "sync",
+          null,
+          syncedAt,
         );
-
-        if (upsertError) {
-          throw upsertError;
-        }
 
         updateLocalSyncMeta((current) => ({
           ...current,
           pendingSync:
             current.lastLocalChangeAt !== null && current.lastLocalChangeAt > startedAt,
-          lastSyncedAt: upsertedSnapshot?.updated_at ?? syncedAt,
-          lastRemoteRevision: Number(upsertedSnapshot?.revision ?? revision),
+          lastSyncedAt: upsertedSnapshot.updatedAt,
+          lastRemoteRevision: upsertedSnapshot.revision,
         }));
       } else {
         updateLocalSyncMeta((current) => ({
@@ -711,7 +993,7 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
       syncInFlightRef.current = false;
       setIsSyncing(false);
     }
-  }, [fetchRemoteSnapshot, ready, updateLocalSyncMeta]);
+  }, [fetchRemoteSnapshot, ready, updateLocalSyncMeta, writeRemoteSnapshot]);
 
   const scheduleSync = useCallback(
     (delay = SYNC_DEBOUNCE_MS) => {
@@ -1026,6 +1308,118 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
     scheduleSync(100);
   }, [markAccountOnboarded, scheduleSync, signInConflictPrompt, updateLocalSyncMeta]);
 
+  const listSnapshotCommits = useCallback(async () => {
+    const client = getSupabaseClient();
+    const currentSession = sessionRef.current;
+
+    if (!client || !currentSession?.user) {
+      return [];
+    }
+
+    const { data, error } = await withTimeout<SnapshotCommitQueryResult>(
+      client
+        .from(SNAPSHOT_COMMIT_TABLE)
+        .select("id, revision, state, source, reason, restored_from_revision, task_count, note_count, thread_count, created_at")
+        .eq("user_id", currentSession.user.id)
+        .order("created_at", { ascending: false })
+        .limit(SNAPSHOT_HISTORY_LIMIT),
+      SYNC_TIMEOUT_MS,
+      "History is taking longer than expected. Try again in a moment.",
+    );
+
+    if (error) {
+      throw error;
+    }
+
+    return (data ?? []).map(toSnapshotCommit);
+  }, []);
+
+  const restoreSnapshotCommit = useCallback(
+    async (commitId: string) => {
+      const client = getSupabaseClient();
+      const currentSession = sessionRef.current;
+
+      if (!client || !currentSession?.user) {
+        throw new Error("Sign in to restore cloud history.");
+      }
+
+      if (syncInFlightRef.current) {
+        throw new Error("Sync is busy. Try restoring again in a moment.");
+      }
+
+      syncInFlightRef.current = true;
+      const startedAt = new Date().toISOString();
+      setIsSyncing(true);
+      setLastSyncAttemptAt(startedAt);
+      setSyncError(null);
+      cancelScheduledSync();
+
+      try {
+        const { data: commit, error } = await withTimeout<SnapshotCommitSingleQueryResult>(
+          client
+            .from(SNAPSHOT_COMMIT_TABLE)
+            .select("id, revision, state, source, reason, restored_from_revision, task_count, note_count, thread_count, created_at")
+            .eq("user_id", currentSession.user.id)
+            .eq("id", commitId)
+            .single(),
+          SYNC_TIMEOUT_MS,
+          "History restore is taking longer than expected. Try again in a moment.",
+        );
+
+        if (error) {
+          throw error;
+        }
+
+        if (!commit?.state) {
+          throw new Error("That history entry no longer has a restorable snapshot.");
+        }
+
+        const remoteSnapshot = await fetchRemoteSnapshot(currentSession.user.id);
+        const stamp = takeMutationStamp();
+        const currentRestoreBase = remoteSnapshot?.state
+          ? mergeTodoayStates(stateRef.current, remoteSnapshot.state)
+          : stateRef.current;
+        const restoredState = restampStateForRestore(
+          normalizeState(commit.state),
+          currentRestoreBase,
+          stamp,
+        );
+        const restoredAt = new Date().toISOString();
+        const upsertedSnapshot = await writeRemoteSnapshot(
+          client,
+          restoredState,
+          "restore",
+          Number(commit.revision),
+          restoredAt,
+        );
+
+        stateRef.current = restoredState;
+        setState(restoredState);
+        updateLocalSyncMeta((current) => ({
+          ...current,
+          pendingSync:
+            current.lastLocalChangeAt !== null && current.lastLocalChangeAt > stamp.updatedAt,
+          lastSyncedAt: upsertedSnapshot.updatedAt,
+          lastRemoteRevision: upsertedSnapshot.revision,
+        }));
+      } catch (error) {
+        console.error("Todoay history restore failed", error);
+        setSyncError(error instanceof Error ? error.message : "History restore failed.");
+        throw error;
+      } finally {
+        syncInFlightRef.current = false;
+        setIsSyncing(false);
+      }
+    },
+    [
+      cancelScheduledSync,
+      fetchRemoteSnapshot,
+      takeMutationStamp,
+      updateLocalSyncMeta,
+      writeRemoteSnapshot,
+    ],
+  );
+
   const value = useMemo<StoreValue>(() => ({
     ready,
     state,
@@ -1098,6 +1492,12 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
     },
     async syncNow() {
       await performSync();
+    },
+    async listSnapshotCommits() {
+      return listSnapshotCommits();
+    },
+    async restoreSnapshotCommit(commitId) {
+      await restoreSnapshotCommit(commitId);
     },
     addTodo(date) {
       const todoId = createId();
@@ -2077,7 +2477,17 @@ export function TodoayProvider({ children }: { children: ReactNode }) {
         .map(([date]) => date)
         .sort();
     },
-  }), [applyLocalMutation, performSync, ready, resolvedTheme, state, syncStatus, takeMutationStamp]);
+  }), [
+    applyLocalMutation,
+    listSnapshotCommits,
+    performSync,
+    ready,
+    resolvedTheme,
+    restoreSnapshotCommit,
+    state,
+    syncStatus,
+    takeMutationStamp,
+  ]);
 
   return (
     <TodoayContext.Provider value={value}>

@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
-import { Settings, MoonStar, Copy, Download, Upload, FileWarning, Cloud, LogOut } from "lucide-react";
+import { createPortal } from "react-dom";
+import { Settings, MoonStar, Copy, Download, Upload, FileWarning, Cloud, LogOut, History, RotateCcw, X } from "lucide-react";
 import ClientReady from "@/components/ClientReady";
 import PageHeader from "@/components/PageHeader";
 import { useTodoay } from "@/lib/store";
@@ -9,7 +10,9 @@ import { formatSyncedText } from "@/lib/syncPresentation";
 import type {
   ImportConflict,
   ImportConflictResolution,
+  TodoaySnapshotCommit,
   TodoayExportData,
+  TodoayState,
   ThemeMode,
 } from "@/lib/types";
 
@@ -48,6 +51,100 @@ const describeConflictChoice = (choice: ImportConflictResolution) => {
   return "Keep existing";
 };
 
+const formatHistoryTime = (value: string) =>
+  new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
+
+const describeCommitSource = (commit: TodoaySnapshotCommit) => {
+  const label = commit.source.label || "Unknown source";
+  if (commit.source.kind === "device") {
+    return label;
+  }
+  return `${label} (${commit.source.kind})`;
+};
+
+const pluralize = (count: number, singular: string) => `${count} ${singular}${count === 1 ? "" : "s"}`;
+
+const flattenTodoMap = (snapshot: TodoayState) =>
+  new Map(
+    Object.values(snapshot.todosByDate)
+      .flat()
+      .map((todo) => [todo.id, JSON.stringify(todo)]),
+  );
+
+const threadSummaryMap = (snapshot: TodoayState) =>
+  new Map(
+    snapshot.threads.map((thread) => [
+      thread.id,
+      JSON.stringify({
+        title: thread.title,
+        pinned: thread.pinned,
+        archived: thread.archived,
+        sortOrder: thread.sortOrder,
+      }),
+    ]),
+  );
+
+const noteSummaryMap = (snapshot: TodoayState) =>
+  new Map(Object.entries(snapshot.noteDocs).map(([noteId, note]) => [noteId, JSON.stringify(note)]));
+
+const countChangedItems = (current: Map<string, string>, previous: Map<string, string>) => {
+  let changed = 0;
+
+  current.forEach((value, key) => {
+    if (previous.get(key) !== value) {
+      changed += 1;
+    }
+  });
+
+  previous.forEach((_, key) => {
+    if (!current.has(key)) {
+      changed += 1;
+    }
+  });
+
+  return changed;
+};
+
+const describeHistoryChange = (
+  commit: TodoaySnapshotCommit,
+  previousCommit: TodoaySnapshotCommit | undefined,
+) => {
+  if (commit.reason === "restore") {
+    return "Restored an earlier version";
+  }
+
+  if (!previousCommit) {
+    return "Saved cloud backup";
+  }
+
+  const taskChanges = countChangedItems(flattenTodoMap(commit.state), flattenTodoMap(previousCommit.state));
+  const noteChanges = countChangedItems(noteSummaryMap(commit.state), noteSummaryMap(previousCommit.state));
+  const threadChanges = countChangedItems(threadSummaryMap(commit.state), threadSummaryMap(previousCommit.state));
+  const changes = [
+    taskChanges > 0 ? pluralize(taskChanges, "task") : null,
+    noteChanges > 0 ? pluralize(noteChanges, "note") : null,
+    threadChanges > 0 ? pluralize(threadChanges, "thread") : null,
+  ].filter((change): change is string => Boolean(change));
+
+  if (changes.length > 0) {
+    return `Changed ${changes.join(", ")}`;
+  }
+
+  if (
+    commit.state.themeMode !== previousCommit.state.themeMode ||
+    commit.state.copyToBehavior !== previousCommit.state.copyToBehavior
+  ) {
+    return "Updated settings";
+  }
+
+  return "Synced latest changes";
+};
+
 function SettingsScreen() {
   const {
     ready,
@@ -59,6 +156,8 @@ function SettingsScreen() {
     syncStatus,
     signInWithGoogle,
     signOut,
+    listSnapshotCommits,
+    restoreSnapshotCommit,
     state,
   } = useTodoay();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -67,6 +166,11 @@ function SettingsScreen() {
   const [pendingImport, setPendingImport] = useState<TodoayExportData | null>(null);
   const [conflicts, setConflicts] = useState<ImportConflict[]>([]);
   const [resolutions, setResolutions] = useState<Record<string, ImportConflictResolution>>({});
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [historyCommits, setHistoryCommits] = useState<TodoaySnapshotCommit[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [restoringCommitId, setRestoringCommitId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -110,7 +214,7 @@ function SettingsScreen() {
 
   const syncInlineLabel = useMemo(() => {
     const accountLabel = syncStatus.user?.email ?? syncStatus.user?.name ?? "Local only";
-    return `${accountLabel} · ${formatSyncedText(syncStatus.lastSyncedAt)}`;
+    return `${accountLabel} - ${formatSyncedText(syncStatus.lastSyncedAt)}`;
   }, [syncStatus]);
 
   if (!ready) {
@@ -146,6 +250,51 @@ function SettingsScreen() {
     resetImportState();
     setStatusTone("success");
     setStatusMessage("Imported data and merged it into your existing tasks, notes, and threads.");
+  };
+
+  const refreshHistory = async () => {
+    setHistoryLoading(true);
+    setHistoryError(null);
+
+    try {
+      setHistoryCommits(await listSnapshotCommits());
+    } catch (error) {
+      console.error("Failed to load Todoay history", error);
+      setHistoryError(error instanceof Error ? error.message : "Failed to load history.");
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const openHistory = () => {
+    setIsHistoryOpen(true);
+    void refreshHistory();
+  };
+
+  const restoreHistoryCommit = async (commit: TodoaySnapshotCommit) => {
+    const commitTime = formatHistoryTime(commit.createdAt);
+    const confirmed = window.confirm(
+      `Restore Todoay to the version from ${commitTime}? This will create a new history entry for the restore.`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setRestoringCommitId(commit.id);
+    setHistoryError(null);
+
+    try {
+      await restoreSnapshotCommit(commit.id);
+      setStatusTone("success");
+      setStatusMessage(`Restored Todoay to the version from ${commitTime}.`);
+      await refreshHistory();
+    } catch (error) {
+      console.error("Failed to restore Todoay history", error);
+      setHistoryError(error instanceof Error ? error.message : "Failed to restore this revision.");
+    } finally {
+      setRestoringCommitId(null);
+    }
   };
 
   const handleImportFile = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -300,6 +449,30 @@ function SettingsScreen() {
               </button>
             )}
           </div>
+        </div>
+
+        <div className="settings-divider" />
+
+        <div className="settings-row settings-row-stack">
+          <span className="settings-row-text">
+            <span className="settings-row-label">
+              <History size={18} color="var(--accent-color)" />
+              <span>Cloud history</span>
+            </span>
+            <span className="settings-row-description">
+              Review recent synced revisions and restore a previous state for this account.
+            </span>
+          </span>
+          <button
+            type="button"
+            className="settings-icon-action"
+            onClick={openHistory}
+            disabled={!syncStatus.isAuthenticated}
+            aria-label="Open cloud history"
+            title={syncStatus.isAuthenticated ? "Open cloud history" : "Sign in to view history"}
+          >
+            <History size={18} />
+          </button>
         </div>
 
         <div className="settings-divider" />
@@ -480,6 +653,81 @@ function SettingsScreen() {
             </div>
           </section>
         </div>
+      ) : null}
+
+      {isHistoryOpen && typeof document !== "undefined" ? createPortal(
+        <div
+          className="settings-modal-overlay"
+          role="presentation"
+          onClick={() => setIsHistoryOpen(false)}
+        >
+          <section
+            className="settings-modal card settings-history-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="cloud-history-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="settings-modal-header settings-modal-header-spread">
+              <div className="settings-modal-title-group">
+                <History size={20} color="var(--accent-color)" />
+                <div>
+                  <h2 id="cloud-history-title" className="settings-modal-title">Cloud History</h2>
+                  <p className="settings-row-description">
+                    Recent account revisions are kept for rollback and audit.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="settings-modal-close-button"
+                onClick={() => setIsHistoryOpen(false)}
+                aria-label="Close cloud history"
+                title="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {historyError ? (
+              <div className="settings-status error">{historyError}</div>
+            ) : null}
+
+            <div className="settings-history-list">
+              {historyLoading ? (
+                <div className="settings-history-empty">Loading history...</div>
+              ) : historyCommits.length === 0 ? (
+                <div className="settings-history-empty">
+                  No cloud history yet. Make a synced change and it will appear here.
+                </div>
+              ) : (
+                historyCommits.map((commit, index) => (
+                  <article key={commit.id} className="settings-history-row">
+                    <div className="settings-history-main">
+                      <div className="settings-history-title">
+                        <span>{formatHistoryTime(commit.createdAt)}</span>
+                      </div>
+                      <div className="settings-history-meta">
+                        {describeCommitSource(commit)} - {describeHistoryChange(commit, historyCommits[index + 1])}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="settings-icon-action"
+                      onClick={() => void restoreHistoryCommit(commit)}
+                      disabled={Boolean(restoringCommitId)}
+                      aria-label={`Restore version from ${formatHistoryTime(commit.createdAt)}`}
+                      title={`Restore version from ${formatHistoryTime(commit.createdAt)}`}
+                    >
+                      <RotateCcw size={18} />
+                    </button>
+                  </article>
+                ))
+              )}
+            </div>
+          </section>
+        </div>,
+        document.body,
       ) : null}
     </div>
   );
