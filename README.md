@@ -32,6 +32,17 @@ npm install
 npm run dev
 ```
 
+## Testing
+
+```bash
+npm run lint
+npm run test:unit
+npm run test:e2e
+npm run test:ci
+```
+
+The end-to-end suite runs the app on an isolated Playwright dev server with Supabase public env vars blanked, so CI exercises the local-first app without touching external services.
+
 ## Static export
 
 ```bash

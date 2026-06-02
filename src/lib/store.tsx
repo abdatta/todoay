@@ -391,7 +391,7 @@ const parseNoteLinkKey = (key: string) => {
 const createRevertConflict = (message: string) =>
   new Error(`Cannot revert this change because ${message}.`);
 
-const applyRevertPatch = (
+export const applyRevertPatch = (
   currentInput: TodoayState,
   selectedInput: TodoayState,
   previousInput: TodoayState,
