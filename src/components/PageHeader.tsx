@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { AlertTriangle, CircleAlert, RefreshCcw } from "lucide-react";
+import InstallAppButton from "@/components/InstallAppButton";
 import { useTodoay } from "@/lib/store";
 import { formatSyncedText } from "@/lib/syncPresentation";
 
@@ -99,12 +100,11 @@ export default function PageHeader({
           </div>
           {subtitle ? <p className="page-subtitle">{subtitle}</p> : null}
         </div>
-        {syncButton || actions ? (
-          <div className="header-actions">
-            {syncButton}
-            {actions}
-          </div>
-        ) : null}
+        <div className="header-actions">
+          <InstallAppButton />
+          {syncButton}
+          {actions}
+        </div>
       </div>
     </header>
   );

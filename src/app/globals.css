@@ -249,6 +249,89 @@ input {
   cursor: default;
 }
 
+.install-header-action {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.install-header-button {
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  overflow: hidden;
+  border-radius: 999px;
+  color: #fff8f2;
+  background: var(--accent-gradient);
+  border: 1px solid color-mix(in srgb, var(--accent-color) 38%, var(--border-subtle));
+  box-shadow: 0 8px 22px rgba(255, 140, 122, 0.18);
+  transition:
+    width 0.28s ease,
+    background 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
+  white-space: nowrap;
+}
+
+.install-header-button:hover,
+.install-header-button:focus-visible {
+  width: 96px;
+  gap: 7px;
+  background: var(--accent-gradient-hover);
+  box-shadow: 0 10px 26px rgba(255, 140, 122, 0.24);
+  outline: none;
+}
+
+.install-header-button:active {
+  transform: scale(0.96);
+}
+
+.install-header-button > svg {
+  transform: translateY(-1px);
+}
+
+.install-header-button.wide {
+  width: 96px;
+  gap: 7px;
+}
+
+.install-header-label {
+  max-width: 0;
+  opacity: 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1;
+  transition:
+    max-width 0.22s ease,
+    opacity 0.18s ease;
+}
+
+.install-header-button.wide .install-header-label,
+.install-header-button:hover .install-header-label,
+.install-header-button:focus-visible .install-header-label {
+  max-width: 54px;
+  opacity: 1;
+}
+
+.install-header-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 80;
+  width: 210px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  color: var(--text-main);
+  background: var(--nav-bg);
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 16px 32px -20px rgba(0, 0, 0, 0.58), var(--glass-shadow);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
 .date-selector-container,
 .thread-selector-container,
 .segmented-control,
