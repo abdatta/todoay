@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "lib": ["deno.window", "deno.ns", "dom", "dom.iterable", "esnext"],
+    "strict": true
+  },
+  "imports": {
+    "@modelcontextprotocol/sdk/server/mcp.js": "npm:@modelcontextprotocol/sdk@1.29.0/server/mcp.js",
+    "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js": "npm:@modelcontextprotocol/sdk@1.29.0/server/webStandardStreamableHttp.js",
+    "@supabase/supabase-js": "npm:@supabase/supabase-js@2.104.1",
+    "zod": "npm:zod@4.4.3"
+  }
+}

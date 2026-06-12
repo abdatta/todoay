@@ -5,20 +5,31 @@
   "scripts": {
     "dev": "next dev --port 2020",
     "build": "next build",
-    "start": "next start",
+    "start": "tsx mcp/serve.ts",
     "lint": "eslint",
+    "mcp:stdio": "tsx mcp/stdio.ts",
+    "mcp:http": "tsx mcp/http.ts",
+    "mcp:edge:check": "deno check --config supabase/functions/todoay-mcp/deno.json supabase/functions/todoay-mcp/index.ts",
+    "mcp:edge:serve": "supabase functions serve --no-verify-jwt todoay-mcp",
+    "mcp:edge:deploy": "supabase functions deploy --no-verify-jwt todoay-mcp",
+    "serve": "tsx mcp/serve.ts",
+    "mcp:inspect": "npx @modelcontextprotocol/inspector -- npm run mcp:stdio",
     "test": "npm run test:unit && npm run test:e2e",
+    "test:serve": "tsx mcp/smokeServe.ts",
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
     "test:ci": "npm run lint && npm run test:unit && npm run build && npm run test:e2e"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@supabase/supabase-js": "^2.104.1",
     "date-fns": "^4.1.0",
     "lucide-react": "^0.575.0",
     "next": "^16.1.6",
     "react": "^19.2.3",
-    "react-dom": "^19.2.3"
+    "react-dom": "^19.2.3",
+    "tsx": "^4.22.4",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
