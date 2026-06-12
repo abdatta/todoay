@@ -1,0 +1,4 @@
+project_id = "todoay"
+
+[functions.todoay-mcp]
+verify_jwt = false

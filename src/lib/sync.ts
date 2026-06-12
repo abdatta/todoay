@@ -11,7 +11,7 @@ import type {
   TodoItem,
   TodoayState,
   TodoaySyncMetadata,
-} from "@/lib/types";
+} from "./types.ts";
 
 export const STATE_SCHEMA_VERSION = 3 as const;
 

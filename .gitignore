@@ -18,6 +18,7 @@ pnpm-debug.log*
 # test artifacts
 test-results
 playwright-report
+supabase/.temp
 
 # misc
 .DS_Store
