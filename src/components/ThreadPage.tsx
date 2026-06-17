@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
 import { useRouter } from "next/navigation";
 import { format, isToday, isTomorrow, isYesterday, parseISO } from "date-fns";
 import {
@@ -10,7 +17,6 @@ import {
   CalendarClock,
   ChevronLeft,
   Layers,
-  GripVertical,
   MoreVertical,
   Plus,
   Trash2,
@@ -18,33 +24,9 @@ import {
 import ClientReady from "@/components/ClientReady";
 import { DatePickerPopupContent } from "@/components/CustomDatePicker";
 import PageHeader from "@/components/PageHeader";
+import { TaskLine, useTaskLineReorder, type TaskLineFocusRequest } from "@/components/TaskLine";
 import type { ThreadTaskItem } from "@/lib/types";
 import { useTodoay } from "@/lib/store";
-
-function autoResizeTextarea(element: HTMLTextAreaElement | null) {
-  if (!element) {
-    return;
-  }
-
-  element.style.height = "0px";
-  element.style.height = `${element.scrollHeight}px`;
-}
-
-function getDurationTone(durationMinutes: number | undefined) {
-  if (!durationMinutes) {
-    return "empty";
-  }
-  if (durationMinutes < 15) {
-    return "quick";
-  }
-  if (durationMinutes < 60) {
-    return "medium";
-  }
-  if (durationMinutes < 360) {
-    return "deep";
-  }
-  return "long";
-}
 
 function ThreadScreen({ threadId }: { threadId: string }) {
   const router = useRouter();
@@ -57,11 +39,13 @@ function ThreadScreen({ threadId }: { threadId: string }) {
     addThreadTask,
     updateThreadTask,
     deleteThreadTask,
+    reorderThreadTask,
     scheduleThreadTaskToDate,
   } = useTodoay();
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [openScheduleMenuId, setOpenScheduleMenuId] = useState<string | null>(null);
   const [scheduleTaskId, setScheduleTaskId] = useState<string | null>(null);
+  const [editingDurationTaskId, setEditingDurationTaskId] = useState<string | null>(null);
   const [isThreadActionMenuOpen, setIsThreadActionMenuOpen] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState<string | null>(null);
@@ -69,12 +53,11 @@ function ThreadScreen({ threadId }: { threadId: string }) {
   const menuRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const scheduleMenuRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const threadActionMenuRef = useRef<HTMLDivElement | null>(null);
-  const pendingFocusRef = useRef<{ id: string; mode: "selectAll" | "cursorEnd" } | null>(null);
-  const inputRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
+  const pendingFocusRef = useRef<TaskLineFocusRequest | null>(null);
 
   const thread = state.threads.find((candidate) => candidate.id === threadId) ?? null;
-  const openTasks = thread?.tasks.filter((task) => !task.completed) ?? [];
-  const completedTasks = thread?.tasks.filter((task) => task.completed) ?? [];
+  const openTasks = useMemo(() => thread?.tasks.filter((task) => !task.completed) ?? [], [thread]);
+  const completedTasks = useMemo(() => thread?.tasks.filter((task) => task.completed) ?? [], [thread]);
 
   const scheduledDatesByReferenceId = useMemo(() => {
     const dates = new Map<string, string[]>();
@@ -135,6 +118,33 @@ function ThreadScreen({ threadId }: { threadId: string }) {
       document.removeEventListener("keydown", handleEscape);
     };
   }, [isThreadActionMenuOpen, openMenuId, openScheduleMenuId]);
+
+  const handleReorderThreadTask = useCallback((taskId: string, targetTaskId: string, placement: "before" | "after") => {
+    if (!thread) {
+      return;
+    }
+
+    reorderThreadTask(thread.id, taskId, targetTaskId, placement);
+  }, [reorderThreadTask, thread]);
+
+  const {
+    cardRef: taskListCardRef,
+    completedItemsRef,
+    consumeSuppressedClick,
+    dragOverlayStyle,
+    dragState,
+    getDragHandleProps,
+    openItemsRef,
+    rowRefs,
+  } = useTaskLineReorder({
+    openItems: openTasks,
+    completedItems: completedTasks,
+    onReorder: handleReorderThreadTask,
+    onBeforeDragStart: () => {
+      setOpenMenuId(null);
+      setOpenScheduleMenuId(null);
+    },
+  });
 
   if (!ready) {
     return <div className="loading-screen">Loading Todoay...</div>;
@@ -252,130 +262,30 @@ function ThreadScreen({ threadId }: { threadId: string }) {
     return format(parsedDate, "MMM d");
   };
 
-  const renderTaskRow = (task: ThreadTaskItem, previousTaskId?: string, completed = false) => {
+  const renderTaskContent = (task: ThreadTaskItem, previousTaskId?: string, completed = false, isDragging = false) => {
     const scheduledDates = scheduledDatesByReferenceId.get(task.referenceId) ?? [];
 
     return (
-      <div className="task-line-slot" key={task.id}>
-        <div className={`task-line${completed ? " completed" : ""}`}>
-          <input
-            className="todo-checkbox"
-            type="checkbox"
-            disabled={isReadOnly || task.text.trim() === ""}
-            checked={task.completed}
-            onChange={(event) => updateThreadTask(thread.id, task.id, { completed: event.target.checked })}
-          />
-          <div className="thread-task-copy">
-            <textarea
-              className={`task-text-input${completed ? " completed" : ""}`}
-              ref={(element) => {
-                autoResizeTextarea(element);
-                inputRefs.current[task.id] = element;
-                if (element && pendingFocusRef.current?.id === task.id) {
-                  element.focus();
-                  if (pendingFocusRef.current.mode === "selectAll") {
-                    element.select();
-                  } else {
-                    const end = element.value.length;
-                    element.setSelectionRange(end, end);
-                  }
-                  pendingFocusRef.current = null;
-                }
-              }}
-              value={task.text}
-              readOnly={isReadOnly}
-              onKeyDown={(event) => handleTaskKeyDown(event, task.id, task.text, previousTaskId)}
-              onInput={(event: FormEvent<HTMLTextAreaElement>) => autoResizeTextarea(event.currentTarget)}
-              onChange={(event) => updateThreadTask(thread.id, task.id, { text: event.target.value })}
-            />
-          </div>
-          {task.text.trim() !== "" ? (
-            <input
-              className={`task-duration-chip tone-${getDurationTone(task.durationMinutes)}`}
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              aria-label="Estimated task duration in minutes"
-              title="Estimated minutes"
-              placeholder="min"
-              value={task.durationMinutes ?? ""}
-              readOnly={isReadOnly}
-              disabled={isReadOnly}
-              onChange={(event) => {
-                const digits = event.target.value.replace(/\D/g, "").slice(0, 3);
-                const durationMinutes = digits ? Number(digits) : undefined;
-                updateThreadTask(thread.id, task.id, { durationMinutes });
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  handleAddTask();
-                }
-              }}
-            />
-          ) : null}
-          {scheduledDates.length > 0 ? (
-            <div
-              className="thread-task-schedule-menu"
-              ref={(element) => {
-                scheduleMenuRefs.current[task.id] = element;
-              }}
-            >
-              <button
-                type="button"
-                className="thread-task-schedule-indicator"
-                aria-label={`Show scheduled dates for ${task.text || "this task"}`}
-                title={`Scheduled on ${scheduledDates.map(getScheduleLabel).join(", ")}`}
-                aria-expanded={openScheduleMenuId === task.id}
-                onClick={() => {
-                  setOpenMenuId(null);
-                  setOpenScheduleMenuId((current) => (current === task.id ? null : task.id));
-                }}
-              >
-                <CalendarClock size={15} />
-              </button>
-              {openScheduleMenuId === task.id ? (
-                <div className="thread-task-schedule-popover" role="menu" aria-label="Scheduled dates">
-                  {scheduledDates.map((date) => (
-                    <button
-                      key={date}
-                      type="button"
-                      className="thread-task-schedule-date"
-                      role="menuitem"
-                      onClick={() => {
-                        setOpenScheduleMenuId(null);
-                        router.push(`/?date=${date}`);
-                      }}
-                    >
-                      {getScheduleLabel(date)}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-          <div
-            className="task-line-menu"
-            ref={(element) => {
-              menuRefs.current[task.id] = element;
-            }}
-          >
-            <button
-              type="button"
-              className="task-line-action"
-              title="Open task menu"
-              aria-label="Open task menu"
-              aria-expanded={openMenuId === task.id}
-              disabled={isReadOnly}
-              onClick={() => {
-                setOpenScheduleMenuId(null);
-                setOpenMenuId((current) => (current === task.id ? null : task.id));
-              }}
-            >
-              <GripVertical size={16} />
-            </button>
-            {openMenuId === task.id && !isReadOnly ? (
-              <div className="task-line-menu-popover" role="menu" aria-label="Thread task actions">
+      <TaskLine
+        actionAriaLabel={isReadOnly ? "Open task menu" : "Open task menu or long-press to reorder"}
+        actionDisabled={isReadOnly || isDragging}
+        actionTitle={isReadOnly ? "Open task menu" : "Open task menu or long-press to reorder"}
+        canRequestEstimate={!task.durationMinutes && task.text.trim() !== ""}
+        checkboxDisabled={isReadOnly || task.text.trim() === ""}
+        completed={completed}
+        dragHandleProps={getDragHandleProps(task, completed, !isReadOnly)}
+        isDragging={isDragging}
+        isDurationEditing={editingDurationTaskId === task.id}
+        isMenuOpen={openMenuId === task.id}
+        item={task}
+        lineRef={(element) => {
+          if (!isDragging) {
+            rowRefs.current[task.id] = element;
+          }
+        }}
+        menuAriaLabel="Thread task actions"
+        menuLeadingItems={(
+          <>
                 {!task.completed ? (
                   <button
                     type="button"
@@ -391,30 +301,113 @@ function ThreadScreen({ threadId }: { threadId: string }) {
                     <span>Add to day</span>
                   </button>
                 ) : null}
-                <button
-                  type="button"
-                  className="task-line-menu-item danger"
-                  role="menuitem"
-                  onClick={() => {
-                    deleteThreadTask(thread.id, task.id);
-                    setOpenMenuId(null);
-                  }}
-                >
-                  <Trash2 size={15} />
-                  <span>Delete</span>
-                </button>
-                {scheduledDates.length > 0 ? (
-                  <div className="task-line-menu-meta">
-                    On {scheduledDates.map(getScheduleLabel).join(", ")}
-                  </div>
-                ) : null}
+          </>
+        )}
+        menuMeta={scheduledDates.length > 0 ? (
+          <div className="task-line-menu-meta">
+            On {scheduledDates.map(getScheduleLabel).join(", ")}
+          </div>
+        ) : null}
+        menuRef={(element) => {
+          menuRefs.current[task.id] = element;
+        }}
+        onCompletedChange={(checked) => updateThreadTask(thread.id, task.id, { completed: checked })}
+        onDelete={() => {
+          deleteThreadTask(thread.id, task.id);
+          setOpenMenuId(null);
+        }}
+        onDurationChange={(durationMinutes) => updateThreadTask(thread.id, task.id, { durationMinutes })}
+        onDurationEditEnd={() => setEditingDurationTaskId((current) => (current === task.id ? null : current))}
+        onDurationEnter={handleAddTask}
+        onMenuToggle={() => {
+          if (consumeSuppressedClick(task.id)) {
+            return;
+          }
+
+          setOpenScheduleMenuId(null);
+          setOpenMenuId((current) => (current === task.id ? null : task.id));
+        }}
+        onRequestEstimate={() => {
+          setOpenMenuId(null);
+          setEditingDurationTaskId(task.id);
+        }}
+        onTextChange={(text) => updateThreadTask(thread.id, task.id, { text })}
+        onTextKeyDown={(event, itemId, value, previousId) => handleTaskKeyDown(event, itemId, value, previousId)}
+        pendingFocusRef={pendingFocusRef}
+        previousItemId={previousTaskId}
+        readOnly={isReadOnly}
+        trailingContent={scheduledDates.length > 0 ? (
+          <div
+            className="thread-task-schedule-menu"
+            ref={(element) => {
+              scheduleMenuRefs.current[task.id] = element;
+            }}
+          >
+            <button
+              type="button"
+              className="thread-task-schedule-indicator"
+              aria-label={`Show scheduled dates for ${task.text || "this task"}`}
+              title={`Scheduled on ${scheduledDates.map(getScheduleLabel).join(", ")}`}
+              aria-expanded={openScheduleMenuId === task.id}
+              onClick={() => {
+                setOpenMenuId(null);
+                setOpenScheduleMenuId((current) => (current === task.id ? null : task.id));
+              }}
+            >
+              <CalendarClock size={15} />
+            </button>
+            {openScheduleMenuId === task.id ? (
+              <div className="thread-task-schedule-popover" role="menu" aria-label="Scheduled dates">
+                {scheduledDates.map((date) => (
+                  <button
+                    key={date}
+                    type="button"
+                    className="thread-task-schedule-date"
+                    role="menuitem"
+                    onClick={() => {
+                      setOpenScheduleMenuId(null);
+                      router.push(`/?date=${date}`);
+                    }}
+                  >
+                    {getScheduleLabel(date)}
+                  </button>
+                ))}
               </div>
             ) : null}
           </div>
-        </div>
+        ) : null}
+      />
+    );
+  };
+
+  const renderTaskRow = (task: ThreadTaskItem, previousTaskId?: string, completed = false) => {
+    const isDragging = dragState?.itemId === task.id;
+
+    return (
+      <div
+        className={`task-line-slot${isDragging ? " dragging" : ""}`}
+        key={task.id}
+        style={
+          isDragging && dragState
+            ? {
+                height: `${dragState.height}px`,
+              }
+            : undefined
+        }
+      >
+        {!isDragging ? renderTaskContent(task, previousTaskId, completed) : null}
       </div>
     );
   };
+
+  const draggedTask = dragState
+    ? thread.tasks.find((task) => task.id === dragState.itemId) ?? null
+    : null;
+  const draggedTaskPreviousId = draggedTask
+    ? (dragState?.completed ? completedTasks : openTasks)[
+        (dragState?.completed ? completedTasks : openTasks).findIndex((task) => task.id === draggedTask.id) - 1
+      ]?.id
+    : undefined;
 
   return (
     <>
@@ -505,9 +498,9 @@ function ThreadScreen({ threadId }: { threadId: string }) {
           </div>
         </div>
 
-        <section className="card task-list-card">
+        <section className="card task-list-card" ref={taskListCardRef}>
           <div className="task-list">
-            <div>
+            <div ref={openItemsRef}>
               {openTasks.length === 0 ? (
                 <div className="empty-state task-empty-state">No open tasks in this thread.</div>
               ) : (
@@ -526,9 +519,18 @@ function ThreadScreen({ threadId }: { threadId: string }) {
               <div className="task-section-label">
                 {completedTasks.length} Completed {completedTasks.length === 1 ? "item" : "items"}
               </div>
-              <div className="task-list">
+              <div className="task-list" ref={completedItemsRef}>
                 {completedTasks.map((task, index) => renderTaskRow(task, completedTasks[index - 1]?.id, true))}
               </div>
+            </div>
+          ) : null}
+
+          {dragState && draggedTask ? (
+            <div
+              className="task-drag-overlay"
+              style={dragOverlayStyle}
+            >
+              {renderTaskContent(draggedTask, draggedTaskPreviousId, dragState.completed, true)}
             </div>
           ) : null}
         </section>

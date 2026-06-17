@@ -31,6 +31,8 @@ test("creates, completes, and persists a dated task", async ({ page }) => {
   const taskInput = page.locator("textarea.task-text-input").first();
   await expect(taskInput).toBeFocused();
   await taskInput.fill("Write regression tests");
+  await page.getByLabel("Open task menu or long-press to reorder").click();
+  await page.getByRole("menuitem", { name: "Add estimate" }).click();
   await page.getByLabel("Estimated task duration in minutes").fill("25");
   await page.locator("input.todo-checkbox").check();
 
@@ -196,7 +198,25 @@ test("clears task duration and persists the empty duration", async ({ page }) =>
   await expect(durationInput).toHaveValue("45");
   await durationInput.fill("");
   await page.reload();
-  await expect(page.getByLabel("Estimated task duration in minutes")).toHaveValue("");
+  await expect(page.getByLabel("Estimated task duration in minutes")).toHaveCount(0);
+});
+
+test("adds task duration from the task menu", async ({ page }) => {
+  const today = dateKey();
+  await seedState(page, {
+    todosByDate: {
+      [today]: [seedTodo({ id: "duration-task", text: "Duration task", sourceDate: today })],
+    },
+  });
+
+  await page.goto("/");
+  await expect(page.getByLabel("Estimated task duration in minutes")).toHaveCount(0);
+  await page.getByLabel("Open task menu or long-press to reorder").click();
+  await page.getByRole("menuitem", { name: "Add estimate" }).click();
+  await page.getByLabel("Estimated task duration in minutes").fill("25");
+
+  await page.reload();
+  await expect(page.getByLabel("Estimated task duration in minutes")).toHaveValue("25");
 });
 
 test("reorders tasks by long press drag and persists order", async ({ page }) => {

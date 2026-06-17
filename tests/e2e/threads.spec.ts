@@ -99,6 +99,8 @@ test("supports thread task keyboard flow, completion, deletion, and duration per
   await expect(page.locator("textarea.task-text-input")).toHaveCount(1);
   await expect(page.locator("textarea.task-text-input").first()).toBeFocused();
 
+  await page.getByLabel("Open task menu or long-press to reorder").click();
+  await page.getByRole("menuitem", { name: "Add estimate" }).click();
   await page.getByLabel("Estimated task duration in minutes").fill("35");
   await page.locator("input.todo-checkbox").check();
   await expect(page.getByText("1 Completed item")).toBeVisible();
@@ -106,9 +108,42 @@ test("supports thread task keyboard flow, completion, deletion, and duration per
   await page.reload();
   await expect(page.getByLabel("Estimated task duration in minutes")).toHaveValue("35");
 
-  await page.getByLabel("Open task menu").click();
+  await page.getByLabel("Open task menu or long-press to reorder").click();
   await page.getByRole("menuitem", { name: "Delete" }).click();
   await expect(page.locator("textarea.task-text-input")).toHaveCount(0);
+});
+
+test("reorders thread tasks by long press drag and persists order", async ({ page }) => {
+  await seedState(page, {
+    threads: [
+      seedThread({
+        id: "thread-1",
+        title: "Thread ordering",
+        tasks: [
+          seedThreadTask({ id: "task-1", text: "First order", sortOrder: 1024 }),
+          seedThreadTask({ id: "task-2", text: "Second order", sortOrder: 2048 }),
+        ],
+      }),
+    ],
+  });
+
+  await page.goto("/thread?threadId=thread-1");
+  const firstHandle = page.getByLabel("Open task menu or long-press to reorder").first();
+  const secondHandle = page.getByLabel("Open task menu or long-press to reorder").nth(1);
+  const firstBox = await firstHandle.boundingBox();
+  const secondBox = await secondHandle.boundingBox();
+  expect(firstBox).not.toBeNull();
+  expect(secondBox).not.toBeNull();
+
+  await page.mouse.move(firstBox!.x + firstBox!.width / 2, firstBox!.y + firstBox!.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(650);
+  await page.mouse.move(secondBox!.x + secondBox!.width / 2, secondBox!.y + secondBox!.height + 18, { steps: 8 });
+  await page.mouse.up();
+
+  await expect(page.locator("textarea.task-text-input").first()).toHaveValue("Second order");
+  await page.reload();
+  await expect(page.locator("textarea.task-text-input").first()).toHaveValue("Second order");
 });
 
 test("schedules thread tasks to dates and navigates from scheduled indicators", async ({ page }) => {
@@ -124,7 +159,7 @@ test("schedules thread tasks to dates and navigates from scheduled indicators", 
   });
 
   await page.goto("/thread?threadId=thread-1");
-  await page.getByLabel("Open task menu").click();
+  await page.getByLabel("Open task menu or long-press to reorder").click();
   await page.getByRole("menuitem", { name: "Add to day" }).click();
   await activeDay(page, today).click();
 
