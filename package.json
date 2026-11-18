@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --port 2020",
-    "build": "next build",
+    "build": "next build && node scripts/generate-sw.mjs",
     "start": "tsx mcp/serve.ts",
     "lint": "eslint",
     "mcp:stdio": "tsx mcp/stdio.ts",
@@ -14,11 +14,12 @@
     "mcp:edge:deploy": "supabase functions deploy --no-verify-jwt todoay-mcp",
     "serve": "tsx mcp/serve.ts",
     "mcp:inspect": "npx @modelcontextprotocol/inspector -- npm run mcp:stdio",
-    "test": "npm run test:unit && npm run test:e2e",
+    "test": "npm run test:unit && npm run test:e2e && npm run test:offline",
     "test:serve": "tsx mcp/smokeServe.ts",
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
-    "test:ci": "npm run lint && npm run test:unit && npm run build && npm run test:e2e"
+    "test:ci": "npm run lint && npm run test:unit && npm run test:e2e && npm run test:offline",
+    "test:offline": "npm run build && playwright test -c playwright.offline.config.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

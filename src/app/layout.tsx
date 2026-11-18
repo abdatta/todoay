@@ -69,10 +69,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   }
 })();`}</Script>
         <TodoayProvider>
-          <ServiceWorkerRegistration
-            basePath={pagesBasePath}
-            version={process.env.NEXT_PUBLIC_APP_VERSION || "dev"}
-          />
+          <ServiceWorkerRegistration basePath={pagesBasePath} />
           <Navigation />
           <main className="container">{children}</main>
         </TodoayProvider>

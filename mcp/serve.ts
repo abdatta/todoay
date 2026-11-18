@@ -90,7 +90,7 @@ const sendStaticFile = (
   response.writeHead(status, {
     "content-length": file.size,
     "content-type": mimeTypes[extension] ?? "application/octet-stream",
-    "cache-control": extension === ".html"
+    "cache-control": extension === ".html" || file.path.endsWith(`${sep}sw.js`)
       ? "no-cache"
       : "public, max-age=31536000, immutable",
   });

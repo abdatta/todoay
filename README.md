@@ -118,4 +118,10 @@ tasks even when you do not say "Todoay" explicitly.
 
 The app includes a web app manifest, install icons, and a service worker so it can be installed from Chrome on Android after deployment.
 
-Each GitHub Pages deploy also stamps the app with the current commit SHA so installed clients can detect a new service worker and reload onto the latest code.
+## Offline support
+
+`npm run build` runs `scripts/generate-sw.mjs` after the static export. It fills `out/sw.js` with the list of every file in that build and a build id derived from their contents, so the service worker precaches the whole app. Pages, scripts, and route payloads are then served cache-first: the app opens and works with no network, and edits (kept in `localStorage`) sync when a connection returns.
+
+A new deploy is downloaded in the background and switched on while the app is hidden, or the next time it is opened, so it never interrupts typing. The service worker is only registered in production builds; `next dev` unregisters it.
+
+`npm run test:offline` builds the app and runs the Playwright offline checks in `tests/offline` against the production export.
